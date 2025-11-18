@@ -6,13 +6,13 @@ use std::cell::RefCell;
 use std::string::String;
 use crate::parser::ast::{ASTNode, Type, BinaryOperator, UnaryOperator, ImportSpec}; 
 
-// --- ADD THESE IMPORTS ---
+
 use crate::parser::ast::ImportPath;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use std::fs;
 use crate::parser::ast::Loc;
-// --- END ADDED IMPORTS ---
+
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeInfo {
@@ -153,19 +153,18 @@ impl TypeChecker {
 
     fn check_module(path: &ImportPath) -> Result<HashMap<String, Type>, String> {
         let file_path = match path {
-            // This is our new logic
+         
             ImportPath::File(f) => {
                 if f.ends_with(".qc") || f.contains('/') || f.contains('\\') {
-                    // It's a file path
+              
                     f.clone()
                 } else {
-                    // It's a package name, e.g., "math"
-                    // We'll look for "q_packages/<name>/init.qc"
+                   
                     format!("q_packages/{}/init.qc", f)
                 }
             }
             ImportPath::Module(m) => {
-                // This logic is for 'import ai.neural', which becomes 'ai/neural.qc'
+            
                 m.join("/") + ".qc"
             }
         };
@@ -196,7 +195,7 @@ impl TypeChecker {
         Ok(module_types)
     }
 
-    // --- *** FIXED check_gate_expression (Base Case Lookup) *** ---
+
     fn check_gate_expression(
         node: &ASTNode, 
         env: &Rc<RefCell<TypeEnvironment>>
@@ -216,12 +215,12 @@ impl TypeChecker {
                     }
                 }
                 
-                // This line is triggered if the gate name (like 'X') is not a function.
+             
                 Err(format!("Type Error at {}: Unknown quantum gate '{}'.", loc, name))
             }
             
             ASTNode::Dagger { gate_expr, .. } => {
-                // Daggering a gate doesn't change its signature, so we just check the inner expression.
+        
                 let inner_gate_type = Self::check_gate_expression(gate_expr, env)?;
 
                 if let Type::Function(..) = inner_gate_type {
@@ -232,23 +231,20 @@ impl TypeChecker {
             }
             
             ASTNode::Controlled { gate_expr, loc } => {
-                // 1. Get the type of the inner gate
+  
                 let inner_gate_type = Self::check_gate_expression(gate_expr, env)?;
                 
                 match inner_gate_type {
                     Type::Function(mut params, ret_type) => {
-                        // 2. The *first* argument of the inner gate is always the TARGET.
-                        // We check the target type, then add a Qubit control before it.
-                        
-                        // Ensure the innermost gate is a single-target gate
+                    
                         if params.is_empty() {
                             return Err(format!("Type Error at {}: 'controlled' target gate must take at least one argument.", loc));
                         }
 
-                        // Add the new control qubit before the target(s)
+            
                         params.insert(0, Type::Qubit);
                         
-                        // The return type is the same
+               
                         Ok(Type::Function(params, ret_type))
                     }
                     _ => Err(format!("Type Error at {}: 'controlled' can only be applied to a callable gate.", loc))
@@ -258,14 +254,13 @@ impl TypeChecker {
             ASTNode::ParameterizedGate { name, parameters, loc } => {
             let gate_name_lower = name.to_lowercase();
             
-            // 1. Look up the gate function type
+        
             let gate_info = env.borrow().get(&gate_name_lower)
                 .ok_or_else(|| format!("Type Error at {}: Unknown parameterized gate '{}'.", loc, name))?;
             
             match gate_info.var_type {
                 Type::Function(param_types, return_type) => {
-                    // 2. The first N parameters are the gate parameters (angles, etc.)
-                    // The remaining parameters are the qubits
+              
                     
                     if parameters.len() > param_types.len() {
                         return Err(format!(
@@ -274,12 +269,12 @@ impl TypeChecker {
                         ));
                     }
                     
-                    // 3. Type-check each parameter expression
+        
                     for (i, param_expr) in parameters.iter().enumerate() {
                         let param_type = Self::check(param_expr, env, None)?;
                         let expected_type = &param_types[i];
                         
-                        // Allow Int where Float is expected
+          
                         if param_type != *expected_type && 
                            !(*expected_type == Type::Float && param_type == Type::Int) {
                             return Err(format!(
@@ -289,7 +284,7 @@ impl TypeChecker {
                         }
                     }
                     
-                    // 4. Return a function type with the remaining (qubit) parameters
+           
                     let remaining_params = param_types[parameters.len()..].to_vec();
                     Ok(Type::Function(remaining_params, return_type))
                 }
@@ -302,7 +297,7 @@ impl TypeChecker {
     }
 
 
-    /// The main recursive checking function.
+
     pub fn check(node: &ASTNode, env: &Rc<RefCell<TypeEnvironment>>, expected_return_type: Option<&Type>) -> Result<Type, String> {
         
         match node {
@@ -348,7 +343,7 @@ impl TypeChecker {
                 let new_type = Self::check(value, env, Option::None)?;
                 
                 match target.as_ref() {
-                    // Simple identifier assignment
+                  
                     ASTNode::Identifier { name, .. } => {
                         let original_info = match env.borrow().get(name) {
                             Some(info) => info, 
@@ -374,14 +369,14 @@ impl TypeChecker {
                         Ok(Type::None)
                     }
                     
-                    // Dictionary/Array subscript assignment: dict["key"] = value
+                  
                     ASTNode::ArrayAccess { array, index, loc } => {
                         let array_type = Self::check(array, env, Option::None)?;
                         let index_type = Self::check(index, env, Option::None)?;
                         
                         match array_type {
                             Type::Dict => {
-                                // Check that the index is a valid key type
+                 
                                 if index_type != Type::String && 
                                 index_type != Type::Int && 
                                 index_type != Type::Bool {
@@ -390,18 +385,18 @@ impl TypeChecker {
                                         loc, index_type
                                     ));
                                 }
-                                // For Dict, we allow any value type
+        
                                 Ok(Type::None)
                             }
                             Type::Array(inner_type) => {
-                                // Check index is Int
+              
                                 if index_type != Type::Int {
                                     return Err(format!(
                                         "Type Error at {}: Array index must be Int, got {:?}",
                                         loc, index_type
                                     ));
                                 }
-                                // Check value type matches array element type
+                          
                                 if new_type != *inner_type && *inner_type != Type::Any {
                                     return Err(format!(
                                         "Type Error at {}: Cannot assign {:?} to array of {:?}",
@@ -435,7 +430,7 @@ impl TypeChecker {
                 match callee_type {
                     Type::Function(param_types, return_type) => {
                         if arguments.len() > 0 && param_types.len() == 0 {
-                             // Hack for 'print'
+            
                         } else if arguments.len() != param_types.len() {
                             return Err(format!(
                                 "Type Error at {}: Function '{}' expected {} arguments, but got {}",
@@ -629,13 +624,13 @@ impl TypeChecker {
             
            
             ASTNode::Apply { gate_expr, arguments, loc } => {
-                // 1. Get the type of the gate expression
+           
                 let gate_type = Self::check_gate_expression(gate_expr, env)?;
                 
-                // 2. Check that it's a function
+
                 match gate_type {
                     Type::Function(param_types, return_type) => {
-                        // 3. Validate arguments
+          
                         if arguments.len() != param_types.len() {
                             return Err(format!(
                                 "Type Error at {}: Gate requires {} arguments, but got {}",
@@ -655,20 +650,20 @@ impl TypeChecker {
                             }
                         }
                         
-                        Ok(*return_type) // Usually Type::None
+                        Ok(*return_type)
                     }
                     _ => Err(format!("Type Error at {}: This expression is not a callable gate.", loc))
                 }
             }
             
-            // --- *** NEW: Gate *** ---
-            ASTNode::Gate { .. } => { // <-- Use '..'
+          
+            ASTNode::Gate { .. } => {
                 Self::check_gate_expression(node, env)
             }
 
-            // --- *** NEW: Controlled *** ---
+          
             ASTNode::Controlled { gate_expr, loc } => {
-                // This node is checked via `check_gate_expression`
+           
                 Self::check_gate_expression(node, env)
             }
             
@@ -708,7 +703,7 @@ impl TypeChecker {
                 Ok(Type::None)
             }
 
-            // ... (Other functions are unchanged) ...
+        
             ASTNode::FunctionDeclaration { name, parameters, return_type, body, .. } => {
                 let param_types: Vec<Type> = parameters.iter().map(|p| p.param_type.clone()).collect();
                 let rt = return_type.clone().unwrap_or(Type::Any);
@@ -788,7 +783,7 @@ impl TypeChecker {
                     return Err(format!("Type Error: Range end must be an Int, got {:?}", end_type));
                 }
                 
-                // Return the special type that your 'for' loop check already expects
+      
                 Ok(Type::Custom("range".to_string()))
             }
 
@@ -845,4 +840,5 @@ impl TypeChecker {
             }
         }
     }
+
 }
