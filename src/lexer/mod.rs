@@ -29,7 +29,7 @@ impl Lexer {
         
         while !self.is_at_end() {
             
-            // --- 1. Comment & Whitespace Skipping Loop ---
+
             loop {
                 if self.start_of_line {
                 self.handle_indentation(&mut tokens)?;
@@ -37,35 +37,35 @@ impl Lexer {
                 self.skip_whitespace_except_newline(); 
 
                 if self.current_char().ok() == Some('/') {
-                    if self.peek() == Some('/') { // Check for 2nd /
+                    if self.peek() == Some('/') {
                         
-                        if self.peek_n(2) == Some('/') { // Check for 3rd /
-                            // '///' (doc comment)
+                        if self.peek_n(2) == Some('/') { 
+                          
                             let start_col = self.column;
-                            self.advance(); // Consume 1st '/'
+                            self.advance(); 
                             
                             let doc_token = self.doc_comment()?; 
                             
                             let length = self.column - start_col;
                             tokens.push(self.make_token(doc_token, length));
-                            continue; // Restart comment/whitespace loop
+                            continue; 
                              
                         } else { 
-                            // '//' (single-line comment)
-                            self.advance(); // Consume 1st '/'
-                            self.skip_single_line_comment(); // Call the existing helper
-                            continue; // Restart comment/whitespace loop
+                           
+                            self.advance(); 
+                            self.skip_single_line_comment(); 
+                            continue; 
                         }
 
                     } else {
-                        // It was just a single '/', not a comment
-                        break; // Break inner loop
+                  
+                        break;
                     }
                 } else {
-                    // It wasn't a '/'
-                    break; // Break inner loop
+                
+                    break; 
                 }
-                // --- END CORRECTED LOGIC ---
+             
             }
            
 
@@ -76,20 +76,20 @@ impl Lexer {
                 break;
             }
 
-            // Check for and consume a newline *after* indentation
+           
             if self.current_char().ok() == Some('\n') {
-                self.advance(); // Consume the newline
+                self.advance();
                 tokens.push(self.make_token(Token::Newline, 1));
-                continue; // Restart main loop
+                continue; 
             }
 
-            // --- 3. Process the next actual token ---
+         
             let _start_col = self.column;
             let ch = self.current_char()?;
 
-            // 'token_result' must be a Result
+           
             let token_result = match ch {
-                // Quantum notation
+                
                 '|' => {
                     if self.is_quantum_ket() {
                         self.ket_notation()
@@ -111,7 +111,7 @@ impl Lexer {
                     }
                 }
                 
-                // Operators
+         
                 '+' => { self.advance(); Ok(self.make_token(Token::Plus, 1)) }
                 '-' => {
                     if self.peek() == Some('>') {
@@ -181,7 +181,7 @@ impl Lexer {
                     }
                 }
                 
-                // Strings, Chars, Numbers, Identifiers
+              
                 '"' => self.string_literal(),
                 '\'' => self.char_literal(),
                 c if c.is_ascii_digit() => self.number_literal(),
@@ -226,8 +226,8 @@ impl Lexer {
             tokens.push(token_result?);
         }
         
-        // --- Handle final dedents and EOF ---
-        while self.indent_stack.len() > 1 { // Assumes 0 is root
+   
+        while self.indent_stack.len() > 1 {
             self.indent_stack.pop();
             tokens.push(self.make_token(Token::Dedent, 0));
         }
@@ -239,7 +239,7 @@ impl Lexer {
     fn handle_indentation(&mut self, tokens: &mut Vec<TokenWithLocation>) -> Result<(), String> {
     let mut indent_level = 0;
     
-    // 1. Consume whitespace and count indent
+  
     while !self.is_at_end() {
         let ch = self.current_char()?;
         match ch {
@@ -248,29 +248,28 @@ impl Lexer {
                 self.advance();
             }
             '\t' => {
-                indent_level += 4; // Tab = 4 spaces
+                indent_level += 4;
                 self.advance();
             }
-            _ => break, // Stop at content, newline, or comment
+            _ => break, 
         }
     }
 
-    // 2. Check if the line is blank (only newline or comment ahead)
+ 
     if !self.is_at_end() {
         let ch = self.current_char()?;
-        // Check for newline OR a comment
+      
         if ch == '\n' || (ch == '/' && self.peek() == Some('/')) {
-            // This is a blank line. Do NOT emit Indent/Dedent.
-            // The main loop will handle the newline or comment.
-            self.start_of_line = false; // Clear the flag
+           
+            self.start_of_line = false;
             return Ok(()); 
         }
     }
     
-    // 3. Line is NOT blank. Clear start_of_line flag
+
     self.start_of_line = false;
     
-    // 4. Process Indent/Dedent logic.
+  
     let current_indent = *self.indent_stack.last().unwrap();
     
     if indent_level > current_indent {
@@ -298,34 +297,33 @@ impl Lexer {
         let start_col = self.column;
         
         let token = match ch {
-            // Comments
+         
             '#' => {
                 self.skip_comment();
                 return Ok(None);
             }
             
-            // Newlines
-            // src/lexer/mod.rs (around line 190, the Newline case)
+          
 
-            // Newlines
+           
             '\n' => {
                 let token = Token::Newline;
                 
-                // 1. ADVANCE (CONSUME THE \n)
+           
                 self.advance(); 
                 
-                // 2. MAKE TOKEN (Length is 1, Column is now 2)
-                let length = 1; // \n is always one char long
+        
+                let length = 1; 
                 let token_with_loc = self.make_token(token, length);
                 
-                // 3. RESET COLUMN STATE
+              
                 self.line += 1;
                 self.column = 1;
 
-                return Ok(Some(token_with_loc)); // Return the token
+                return Ok(Some(token_with_loc)); 
             }
             
-            // Quantum state notation |0}, |1}, |+}, |-}
+          
             '|' => {
                 if self.is_quantum_ket() {
                     return Ok(Some(self.ket_notation()?));
@@ -343,7 +341,7 @@ impl Lexer {
                 }
             }
             
-            // Bra notation {0|, {1|
+ 
             '{' => {
                 if self.is_quantum_bra() {
                     return Ok(Some(self.bra_notation()?));
@@ -353,39 +351,34 @@ impl Lexer {
                 }
             }
             
-            // Operators
+       
             '+' => {
                 self.advance();
                 Token::Plus
             }
             '-' => {
-                // Lookahead before advancing
+  
                 if self.peek() == Some('>') {
-                    self.advance(); // consume '-'
-                    self.advance(); // consume '>'
-                    Token::Arrow // Found '->'
+                    self.advance(); 
+                    self.advance();
+                    Token::Arrow 
                 } else {
-                    self.advance(); // consume '-'
-                    Token::Minus // Found single '-'
+                    self.advance();
+                    Token::Minus 
                 }
             }
             '*' => {
-                // Check for '***' (TensorProduct) first
+           
                 if self.peek() == Some('*') && self.input.get(self.position + 2) == Some(&'*') {
-                    self.advance(); // consume 1st *
-                    self.advance(); // consume 2nd *
-                    self.advance(); // consume 3rd *
+                    self.advance(); 
+                    self.advance(); 
+                    self.advance();
                     Token::TensorProduct
                 } 
-                // Check for '**' (Optional: if you plan to use it for power/exponentiation)
-                /* else if self.peek() == Some('*') {
-                    self.advance(); // consume 1st *
-                    self.advance(); // consume 2nd *
-                    Token::Power // Example: if you had a power token
-                } */
+                
                 
                 else {
-                    // Only consume one *
+                  
                     self.advance(); 
                     Token::Star
                 }
@@ -399,84 +392,84 @@ impl Lexer {
                 Token::Percent
             }
             '=' => {
-                // Lookahead before advancing for all two- or three-char tokens starting with '='
+           
                 if self.peek() == Some('=') {
-                    self.advance(); // consume first '='
-                    self.advance(); // consume second '='
-                    Token::EqualEqual // Handles '=='
+                    self.advance(); 
+                    self.advance(); 
+                    Token::EqualEqual 
                 } else if self.peek() == Some('>') {
-                    // Check for '=>>' or '=>'
+                
                     if self.input.get(self.position + 2) == Some(&'>') {
-                        self.advance(); // consume '='
-                        self.advance(); // consume '>'
-                        self.advance(); // consume '>'
-                        Token::PipeDouble // Handles '=>>'
+                        self.advance(); 
+                        self.advance();
+                        self.advance(); 
+                        Token::PipeDouble 
                     } else {
-                        self.advance(); // consume '='
-                        self.advance(); // consume '>'
-                        Token::FatArrow // Handles '=>'
+                        self.advance(); 
+                        self.advance(); 
+                        Token::FatArrow 
                     }
                 } else {
-                    self.advance(); // consume '='
-                    Token::Equal // Handles single '='
+                    self.advance(); 
+                    Token::Equal 
                 }
             }
             '!' => {
-                // Lookahead for '!='
+              
                 if self.peek() == Some('=') {
-                    self.advance(); // consume !
-                    self.advance(); // consume =
+                    self.advance(); 
+                    self.advance(); 
                     Token::NotEqual
                 } else {
-                    self.advance(); // consume single !
+                    self.advance();
                     Token::Bang
                 }
             }
             '<' => {
-                // Lookahead for '<='
+                
                 if self.peek() == Some('=') {
-                    self.advance(); // consume <
-                    self.advance(); // consume =
+                    self.advance();
+                    self.advance(); 
                     Token::LessEqual
                 } else {
-                    self.advance(); // consume single <
+                    self.advance(); 
                     Token::Less
                 }
             }
             '>' => {
-                // Lookahead for '>='
+              
                 if self.peek() == Some('=') {
-                    self.advance(); // consume >
-                    self.advance(); // consume =
+                    self.advance();
+                    self.advance(); 
                     Token::GreaterEqual
                 } else {
-                    self.advance(); // consume single >
+                    self.advance();
                     Token::Greater
                 }
             }
             '?' => {
-                // Lookahead for '?.' (SafeNav)
+        
                 if self.peek() == Some('.') {
-                    self.advance(); // consume ?
-                    self.advance(); // consume .
+                    self.advance();
+                    self.advance(); .
                     Token::SafeNav
                 } else {
-                    self.advance(); // consume single ?
+                    self.advance(); 
                     Token::Question
                 }
             }
             
-            // Strings
+        
             '"' => return Ok(Some(self.string_literal()?)),
             '\'' => return Ok(Some(self.char_literal()?)),
             
-            // Numbers
+       
             c if c.is_ascii_digit() => return Ok(Some(self.number_literal()?)),
             
-            // Identifiers and keywords
+         
             c if c.is_alphabetic() || c == '_' => return Ok(Some(self.identifier_or_keyword())),
             
-            // Punctuation
+          
             '(' => {
                 self.advance();
                 Token::LeftParen
@@ -506,37 +499,37 @@ impl Lexer {
                 Token::Semicolon
             }
             ':' => {
-                // Lookahead for '::' or ':='
+             
                 if self.peek() == Some(':') {
-                    self.advance(); // consume first :
-                    self.advance(); // consume second :
+                    self.advance(); 
+                    self.advance();
                     Token::DoubleColon
                 } else if self.peek() == Some('=') {
-                    self.advance(); // consume :
-                    self.advance(); // consume =
+                    self.advance();
+                    self.advance();
                     Token::ColonEqual
                 } else {
-                    self.advance(); // consume single :
+                    self.advance(); 
                     Token::Colon
                 }
             }
             '.' => {
-                // Check for '...' or '..='
+             
                 if self.peek() == Some('.') {
-                    // Check for '..='
+             
                     if self.input.get(self.position + 2) == Some(&'=') {
-                        self.advance(); // consume first .
-                        self.advance(); // consume second .
-                        self.advance(); // consume =
+                        self.advance(); 
+                        self.advance(); 
+                        self.advance(); 
                         Token::RangeInclusive
                     } else {
-                        // Must be '..' (Range)
-                        self.advance(); // consume first .
-                        self.advance(); // consume second .
+                       
+                        self.advance(); 
+                        self.advance(); 
                         Token::Range
                     }
                 } else {
-                    // Only consume single '.'
+                 
                     self.advance();
                     Token::Dot
                 }
@@ -558,7 +551,7 @@ impl Lexer {
     }
     
     fn is_quantum_bra(&self) -> bool {
-        // Check if it's {0| pattern
+    
         let mut i = self.position + 1;
         while i < self.input.len() {
             let ch = self.input[i];
@@ -575,7 +568,7 @@ impl Lexer {
     
     fn ket_notation(&mut self) -> Result<TokenWithLocation, String> {
         let start_col = self.column;
-        self.advance(); // skip |
+        self.advance(); 
         
         let mut state = String::new();
         while !self.is_at_end() && self.current_char()? != '}' {
@@ -587,14 +580,14 @@ impl Lexer {
             return Err(format!("Unclosed quantum ket at line {}", self.line));
         }
         
-        self.advance(); // skip }
+        self.advance(); 
         let length = self.column - start_col;
         Ok(self.make_token(Token::KetState(state), length))
     }
     
     fn bra_notation(&mut self) -> Result<TokenWithLocation, String> {
         let start_col = self.column;
-        self.advance(); // skip {
+        self.advance();
         
         let mut state = String::new();
         while !self.is_at_end() && self.current_char()? != '|' {
@@ -606,7 +599,7 @@ impl Lexer {
             return Err(format!("Unclosed quantum bra at line {}", self.line));
         }
         
-        self.advance(); // skip |
+        self.advance(); 
         let length = self.column - start_col;
         Ok(self.make_token(Token::BraState(state), length))
     }
@@ -787,7 +780,7 @@ impl Lexer {
             let next = self.peek();
             if next.is_some() && next.unwrap().is_ascii_digit() {
                 is_float = true;
-                self.advance(); // skip .
+                self.advance(); 
                 
                 while !self.is_at_end() && self.current_char()?.is_ascii_digit() {
                     self.advance();
@@ -823,7 +816,7 @@ impl Lexer {
     
     fn string_literal(&mut self) -> Result<TokenWithLocation, String> {
         let start_col = self.column;
-        self.advance(); // skip opening "
+        self.advance(); 
         
         let mut value = String::new();
         
@@ -852,14 +845,14 @@ impl Lexer {
             return Err("Unterminated string".to_string());
         }
         
-        self.advance(); // skip closing "
+        self.advance(); // 
         let length = self.column - start_col;
         Ok(self.make_token(Token::StringLiteral(value), length))
     }
     
     fn char_literal(&mut self) -> Result<TokenWithLocation, String> {
         let start_col = self.column;
-        self.advance(); // skip '
+        self.advance(); //
         
         if self.is_at_end() {
             return Err("Empty character literal".to_string());
@@ -872,7 +865,7 @@ impl Lexer {
             return Err("Unterminated character literal".to_string());
         }
         
-        self.advance(); // skip closing '
+        self.advance(); // 
         let length = self.column - start_col;
         Ok(self.make_token(Token::IntLiteral(ch as i64), length))
     }
@@ -925,44 +918,44 @@ impl Lexer {
     loop {
         match self.current_char() {
             Ok('/') => {
-                self.advance(); // Consume 1st '/' of closing tag
+                self.advance(); 
                 
                 if self.current_char().ok() == Some('/') && self.peek() == Some('/') {
                     self.advance(); // Consume 2nd '/'
                     self.advance(); // Consume 3rd '/'
                     
-                    // --- Content Cleaning Logic ---
+               
                     let trimmed_content = content.trim();
                     let lines: Vec<&str> = trimmed_content.lines().collect();
                     if lines.is_empty() {
                         return Ok(Token::DocComment(String::new()));
                     }
                     
-                    // Find the smallest indentation level
+               
                     let common_indent = lines.iter()
                         .filter(|line| !line.trim().is_empty())
                         .map(|line| line.chars().take_while(|&c| c.is_whitespace()).count())
                         .min()
                         .unwrap_or(0);
 
-                    // Remove the common indent from each line
+                
                     let cleaned_lines: Vec<String> = lines.iter()
                         .map(|line| {
                             if line.len() >= common_indent {
                                 line[common_indent..].to_string()
                             } else {
-                                line.to_string() // Keep empty lines
+                                line.to_string() 
                             }
                         })
                         .collect();
                     
                     return Ok(Token::DocComment(cleaned_lines.join("\n")));
                 }
-                // It wasn't a closing tag, just a random '/'
+             
                 content.push('/');
             }
             Ok('\n') => {
-                self.advance(); // advance() handles all line/col/state changes
+                self.advance();
                 content.push('\n');
             }
             Ok(ch) => {
@@ -970,7 +963,7 @@ impl Lexer {
                 content.push(ch);
             }
             Err(_) => {
-                // Reached EOF before '///'
+     
                 return Err(format!(
                     "Unterminated documentation comment (///...///) starting at line {}",
                     start_line
@@ -991,7 +984,7 @@ impl Lexer {
             self.start_of_line = true;
         } else {
             self.column += 1;
-            // Don't modify start_of_line here - let handle_indentation do it
+      
         }
     }
 }
@@ -1001,14 +994,14 @@ impl Lexer {
     }
     
 
-// src/lexer/mod.rs (around line 345)
+
 
 fn make_token(&self, token: Token, length: usize) -> TokenWithLocation {
     
-    // Use saturating_sub to ensure the result does not underflow (result is 0 if length > column).
+   
     let calculated_start_column = self.column.saturating_sub(length);
     
-    // Columns start at 1. If the calculated start is 0, set it to 1.
+  
     let start_column = if calculated_start_column == 0 {
         1
     } else {
@@ -1172,4 +1165,5 @@ mod tests {
         assert!(matches!(tokens[2].token, Token::FloatLiteral(_)));
         assert!(matches!(tokens[3].token, Token::FloatLiteral(_)));
     }
+
 }
