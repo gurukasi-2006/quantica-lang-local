@@ -19,7 +19,7 @@ impl Parser {
         let mut statements = Vec::new();
         
         while !self.is_at_end() {
-            // Skip newlines at top level
+       
             if self.match_token(&Token::Newline) {
                 continue;
             }
@@ -32,33 +32,33 @@ impl Parser {
     fn parse_array_literal(&mut self) -> Result<ASTNode, String> {
         let mut elements = Vec::new();
         
-        // Check if the array is empty: []
+  
         if self.check(&Token::RightBracket) {
-            self.advance(); // Consume ']'
+            self.advance();
             return Ok(ASTNode::ArrayLiteral(elements));
         }
         
-        // Parse elements
+  
         loop {
-            // Parse one element
+     
             elements.push(self.parse_expression()?);
             
-            // If the next token is ']', we are done
+       
             if self.check(&Token::RightBracket) {
                 break;
             }
             
-            // Otherwise, expect a comma separator
+           
             self.expect(&Token::Comma)?;
         }
         
-        self.expect(&Token::RightBracket)?; // Consume ']'
+        self.expect(&Token::RightBracket)?; 
         
         Ok(ASTNode::ArrayLiteral(elements))
     }
     
     fn parse_statement(&mut self) -> Result<ASTNode, String> {
-        // Skip newlines
+      
         
         
         if self.is_at_end() {
@@ -98,10 +98,10 @@ impl Parser {
                         self.get_loc(self.current()?)
                     ));
                 }
-                // Expression statement or assignment
+             
                 let expr = self.parse_expression()?;
                 
-                // Check for assignment
+             
                 if self.match_token(&Token::Equal) {
                     let value = self.parse_expression()?;
                     self.skip_newlines();
@@ -121,27 +121,27 @@ impl Parser {
         let loc = self.get_loc(self.current()?);
         
         if self.match_token(&Token::Controlled) {
-            // Parse: controlled( ... )
+ 
             self.expect(&Token::LeftParen)?;
             let gate_expr = self.parse_gate_expression()?;
             self.expect(&Token::RightParen)?;
             Ok(ASTNode::Controlled { gate_expr: Box::new(gate_expr), loc })
             
         } else if self.match_token(&Token::Dagger) {
-            // Parse: dagger( ... )
+ 
             self.expect(&Token::LeftParen)?;
             let gate_expr = self.parse_gate_expression()?;
             self.expect(&Token::RightParen)?;
             Ok(ASTNode::Dagger { gate_expr: Box::new(gate_expr), loc })
             
         } else {
-            // Base case: A simple gate or parameterized gate
+        
             let gate_token = self.expect_identifier()?;
             let gate_name = self.extract_identifier_name(&gate_token)?;
             
-            // Check if it's parameterized (e.g., RX(PI))
+          
             if self.check(&Token::LeftParen) {
-                self.advance(); // consume '('
+                self.advance();
                 let mut params = Vec::new();
                 if !self.check(&Token::RightParen) {
                     loop {
@@ -158,7 +158,7 @@ impl Parser {
                     loc: self.get_loc(&gate_token),
                 })
             } else {
-                // Simple gate (e.g., X, CNOT)
+            
                 Ok(ASTNode::Gate {
                     name: gate_name,
                     loc: self.get_loc(&gate_token),
@@ -169,18 +169,17 @@ impl Parser {
 
     fn parse_apply_statement(&mut self) -> Result<ASTNode, String> {
     let loc = self.get_loc(self.current()?);
-    self.expect(&Token::Apply)?; // Consume 'apply'
+    self.expect(&Token::Apply)?; 
 
-    // Check if this is "apply dagger(...)(args)" for CIRCUITS/FUNCTIONS (not gates)
-    // Detect pattern: dagger(identifier...)(
+    
     if self.check(&Token::Dagger) {
         let saved_pos = self.position;
-        self.advance(); // consume 'dagger'
+        self.advance(); 
         
         if self.check(&Token::LeftParen) {
-            self.advance(); // consume '('
+            self.advance(); 
             
-            // Peek ahead - if it's a gate token or 'controlled', parse as gate
+          
             let is_gate_expr = matches!(
                 self.current().ok().map(|t| &t.token),
                 Some(Token::X) | Some(Token::Y) | Some(Token::Z) | Some(Token::S) | Some(Token::T) |
@@ -190,15 +189,13 @@ impl Parser {
                 Some(Token::Controlled) | Some(Token::Dagger)
             );
             
-            // Reset position
+     
             self.position = saved_pos;
             
             if is_gate_expr {
-                // Parse as: apply dagger(gate_expr)(qubit_args)
-                // This is a gate application, not a circuit call
-                // Fall through to regular gate parsing below
+               
             } else {
-                // Parse as: apply dagger(circuit_identifier)(args)
+       
                 self.advance(); // consume 'dagger'
                 self.expect(&Token::LeftParen)?;
                 let callee_expr = self.parse_expression()?;
@@ -215,12 +212,12 @@ impl Parser {
                 });
             }
         } else {
-            // Reset if no '(' after dagger
+        
             self.position = saved_pos;
         }
     }
 
-    // Lookahead to detect if this is a circuit/function call (not a gate)
+
     let saved_pos = self.position;
     let mut is_function_call = false;
     
@@ -276,17 +273,14 @@ impl Parser {
         });
     }
     
-    // Parse as a gate application
+   
     let apply_node = self.parse_gate_application(loc)?;
     self.skip_newlines();
     Ok(apply_node)
 }
 
     fn parse_gate_application(&mut self, loc: Loc) -> Result<ASTNode, String> {
-        // Special handling for simple gate names like X, H, etc.
-        // These should parse as: apply X(qubit_args), not apply X(...)(qubit_args)
         
-        // Check if this is a simple gate (not controlled or dagger)
         let is_simple_gate = matches!(
             self.current()?.token,
             Token::X | Token::Y | Token::Z | Token::Hadamard | Token::S | Token::T |
@@ -299,12 +293,12 @@ impl Parser {
             Token::RX | Token::RY | Token::RZ | Token::U | Token::CPhase
         );
         
-        // If it's a simple gate or parameterized gate at top level, parse as: GATE(qubit_args)
+      
         if is_simple_gate || is_parameterized_gate {
             let gate_token = self.expect_identifier()?;
             let gate_name = self.extract_identifier_name(&gate_token)?;
             
-            // For parameterized gates, parse parameters first
+      
             if is_parameterized_gate {
                 self.expect(&Token::LeftParen)?;
                 let mut params = Vec::new();
@@ -324,7 +318,7 @@ impl Parser {
                     loc,
                 };
                 
-                // Now parse qubit arguments
+
                 self.skip_newlines();
                 self.expect(&Token::LeftParen)?;
                 let arguments = self.parse_arguments()?;
@@ -335,13 +329,13 @@ impl Parser {
                     loc,
                 });
             } else {
-                // Simple gate
+         
                 let gate_expr = ASTNode::Gate {
                     name: gate_name,
                     loc,
                 };
                 
-                // Now parse qubit arguments
+             
                 self.skip_newlines();
                 self.expect(&Token::LeftParen)?;
                 let arguments = self.parse_arguments()?;
@@ -354,13 +348,13 @@ impl Parser {
             }
         }
         
-        // For controlled/dagger gates, use parse_gate_expression
+       
         let gate_expr = self.parse_gate_expression()?;
         
-        // Skip any newlines before the qubit arguments
+    
         self.skip_newlines();
         
-        // Now expect '(' for the qubit arguments
+      
         if !self.check(&Token::LeftParen) {
             let current_token = self.current()?;
             return Err(format!(
@@ -375,8 +369,8 @@ impl Parser {
                 current_token.line, current_token.column, current_token.token
             ));
         }
-        self.advance(); // Consume '('
-        let arguments = self.parse_arguments()?; // This consumes ')'
+        self.advance();
+        let arguments = self.parse_arguments()?;
         
         Ok(ASTNode::Apply {
             gate_expr: Box::new(gate_expr),
@@ -387,7 +381,7 @@ impl Parser {
     fn consume_doc_comment(&mut self) -> Option<String> {
         let mut comments: Vec<String> = Vec::new();
 
-        // Loop to consume all sequential doc comments
+     
         loop {
             let has_doc_comment = if let Some(token) = self.tokens.get(self.position) {
                 matches!(token.token, Token::DocComment(_))
@@ -399,17 +393,17 @@ impl Parser {
                 if let Some(token) = self.tokens.get(self.position) {
                     if let Token::DocComment(content) = &token.token {
                         comments.push(content.clone());
-                        self.advance(); // Consume the DocComment token
-                        self.skip_newlines(); // Skip any newlines after it
+                        self.advance();
+                        self.skip_newlines(); 
                     }
                 }
             } else {
-                // No more doc comments, break the loop
+                
                 break;
             }
         }
 
-        // Return the combined comments
+        
         if comments.is_empty() {
             None
         } else {
@@ -736,7 +730,7 @@ impl Parser {
                 }
             }
         }
-        self.expect(&Token::RightParen)?; // <-- THIS MUST CONSUME THE FINAL ')'
+        self.expect(&Token::RightParen)?; 
         Ok(arguments)
     }
     
@@ -760,7 +754,7 @@ impl Parser {
             Token::None => { self.advance(); Type::None },
             Token::Any => { self.advance(); Type::Any },
             
-            // --- FIXED THIS LINE ---
+       
             Token::Quantum => { self.advance(); Type::QuantumRegister(None) },
             
             Token::Identifier(name) => {
@@ -965,19 +959,17 @@ impl Parser {
     
     fn parse_block(&mut self) -> Result<ASTNode, String> {
         self.expect(&Token::Indent)?;
-        self.skip_newlines(); // Skip any blank lines at the start
+        self.skip_newlines(); 
         
         let mut statements = Vec::new();
         
-        // Loop as long as we're not at a Dedent
+     
         while !self.check(&Token::Dedent) && !self.is_at_end() {
             
-            // parse_statement() is now responsible for parsing
-            // one statement AND consuming its trailing newline(s).
+            
             statements.push(self.parse_statement()?); 
             
-            // After a statement, we might have more blank lines.
-            // skip_newlines() will consume them.
+           
             self.skip_newlines();
         }
         
@@ -1086,7 +1078,7 @@ impl Parser {
     }
     
     fn parse_factor(&mut self) -> Result<ASTNode, String> {
-    let mut expr = self.parse_power()?;  // ← CHANGED: was parse_tensor_product
+    let mut expr = self.parse_power()?;
     while let Some(op_token) = self.match_tokens_loc(&[Token::Star, Token::Slash, Token::Percent]) {
         let operator = match op_token.token {
             Token::Star => BinaryOperator::Mul,
@@ -1095,7 +1087,7 @@ impl Parser {
             _ => unreachable!(),
         };
         let loc = self.get_loc(&op_token);
-        let right = self.parse_power()?;  // ← CHANGED: was parse_tensor_product
+        let right = self.parse_power()?;  
         expr = ASTNode::Binary { operator, left: Box::new(expr), right: Box::new(right), loc };
     }
     Ok(expr)
@@ -1135,11 +1127,11 @@ impl Parser {
     fn parse_power(&mut self) -> Result<ASTNode, String> {
     let mut expr = self.parse_tensor_product()?;
     
-    // Power is RIGHT-associative: 2^3^4 = 2^(3^4)
+    
     if let Some(op_token) = self.match_tokens_loc(&[Token::Caret]) {
         let operator = BinaryOperator::Power;
         let loc = self.get_loc(&op_token);
-        let right = self.parse_power()?;  // ← Recursive for right-associativity
+        let right = self.parse_power()?; 
         expr = ASTNode::Binary { operator, left: Box::new(expr), right: Box::new(right), loc };
     }
     
@@ -1149,31 +1141,31 @@ impl Parser {
 
     
     
-    // --- *** MODIFIED: parse_postfix *** ---
+ 
     fn parse_postfix(&mut self) -> Result<ASTNode, String> {
         let mut expr = self.parse_primary()?;
 
         loop {
             if self.check(&Token::LeftParen) {
-                // Function call
+           
                 let loc = self.get_loc(self.current()?);
-                self.advance(); // Consume '('
+                self.advance();
                 
-                // --- USE THE NEW HELPER ---
+         
                 let arguments = self.parse_arguments()?;
                 
                 expr = ASTNode::FunctionCall { 
                     callee: Box::new(expr), 
                     arguments, 
                     loc,
-                    is_dagger: false, // <-- Add this flag
+                    is_dagger: false, 
                 };
-                // --- END FIX ---
+           
                 
             } else if self.check(&Token::LeftBracket) {
                 // Array access
                 let loc = self.get_loc(self.current()?);
-                self.advance(); // Consume '['
+                self.advance();
                 let index = self.parse_expression()?;
                 self.expect(&Token::RightBracket)?;
                 
@@ -1209,7 +1201,7 @@ impl Parser {
             self.advance();
         }
         
-        // If we hit Indent/Dedent here, something is wrong with statement parsing
+        
         if self.check(&Token::Indent) || self.check(&Token::Dedent) {
             let current_loc = self.current()?.clone();
             return Err(format!(
@@ -1222,7 +1214,7 @@ impl Parser {
         let token = &current_loc.token;
         let loc = self.get_loc(&current_loc);
         
-        // This match must return a Result<ASTNode, String>
+      
         match token {
             Token::If => self.parse_if(),
             Token::Print => {
@@ -1234,20 +1226,19 @@ impl Parser {
                 Ok(ASTNode::Identifier { name: "echo".to_string(), loc })
             }
 
-            // --- *** MODIFIED: Token::Identifier *** ---
+      
             Token::Identifier(name) => {
                 self.advance();
-                // This arm NO LONGER handles calls or member access.
-                // It just returns the identifier.
+                
                 Ok(ASTNode::Identifier { name: name.clone(), loc })
             }
-            // --- *** END MODIFIED *** ---
+    
 
-            // --- *** MODIFIED: Token::Dagger *** ---
+      
             Token::Dagger => {
                 self.advance(); // Consume 'dagger'
                 self.expect(&Token::LeftParen)?;
-                let callee_expr = self.parse_expression()?; // e.g., 'my_circuit' or 'qstd.bell'
+                let callee_expr = self.parse_expression()?;
                 self.expect(&Token::RightParen)?;
                 
                 let call_loc = self.get_loc(self.current()?);
@@ -1307,7 +1298,7 @@ impl Parser {
                 Ok(ASTNode::QuantumBra(state.clone()))
             }
             
-            // --- GROUPING & COLLECTIONS ---
+      
             Token::LeftParen => {
                 self.advance();
                 let expr = self.parse_expression()?;
@@ -1336,7 +1327,7 @@ impl Parser {
         }
     }
 
-    // --- *** DELETED 'parse_call_or_dagger' *** ---
+
 
     fn skip_layout_tokens(&mut self) {
         while self.check(&Token::Newline) || self.check(&Token::Indent) || self.check(&Token::Dedent) {
@@ -1456,10 +1447,10 @@ impl Parser {
         Token::CS => Ok("cs".to_string()),
         Token::CT => Ok("ct".to_string()),
         Token::CPhase => Ok("cphase".to_string()),
-        Token::U => Ok("u".to_string()),           // ← Add these
-        Token::RX => Ok("rx".to_string()),         // ← Add these
-        Token::RY => Ok("ry".to_string()),         // ← Add these
-        Token::RZ => Ok("rz".to_string()),         // ← Add these
+        Token::U => Ok("u".to_string()),        
+        Token::RX => Ok("rx".to_string()),        
+        Token::RY => Ok("ry".to_string()),         
+        Token::RZ => Ok("rz".to_string()),    
         Token::CCX => Ok("ccx".to_string()),
         Token::Toffoli => Ok("toffoli".to_string()),
         _ => Err(format!("Expected Identifier token, found {:?}", token_loc.token))
@@ -1474,7 +1465,7 @@ impl Parser {
         Token::Hadamard | Token::Cnot | Token::X | Token::Y | Token::Z |
         Token::S | Token::T | Token::Swap | Token::Reset |
         Token::CZ | Token::CS | Token::CT | Token::CPhase |
-        Token::U | Token::RX | Token::RY | Token::RZ |  // ← Fixed: removed duplicate Token::U
+        Token::U | Token::RX | Token::RY | Token::RZ |
         Token::CCX | Token::Toffoli
         => {
             let owned_token_loc = current_loc.clone(); 
@@ -1603,4 +1594,5 @@ use crate::lexer::Lexer;
                 }
             }
         }
+
     }
