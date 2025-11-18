@@ -1,5 +1,4 @@
 // src/lib.rs
-// This is the core library of your language
 
 pub mod lexer;
 pub mod parser;
@@ -15,4 +14,5 @@ pub use runtime::{
     quantica_rt_apply_gate,
     quantica_rt_measure,
 };
+
 pub mod linker;
