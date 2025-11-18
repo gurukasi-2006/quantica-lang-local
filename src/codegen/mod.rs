@@ -20,7 +20,7 @@ use inkwell::execution_engine::ExecutionEngine;
 use inkwell::types::VectorType;
 use std::collections::HashMap;
 
-// Debug info imports
+
 use inkwell::debug_info::{
     AsDIScope, DICompileUnit, DISubprogram, DIType, DebugInfoBuilder, DWARFEmissionKind,
     DWARFSourceLanguage, DIScope, DILocation, DIFlags,DIFlagsConstants,
@@ -40,7 +40,7 @@ enum MLIRStep {
     LLVMIR,
 }
 
-/// The main LLVM compiler backend with debug info support.
+
 pub struct Compiler<'ctx> {
     context: &'ctx Context,
     builder: Builder<'ctx>,
@@ -58,7 +58,7 @@ pub struct Compiler<'ctx> {
     rt_htod_transfer: FunctionValue<'ctx>,
     rt_dtoh_transfer: FunctionValue<'ctx>,
     
-    // Debug info fields
+    
     debug_builder: DebugInfoBuilder<'ctx>,
     compile_unit: DICompileUnit<'ctx>,
     di_types: HashMap<String, DIType<'ctx>>,
@@ -66,28 +66,28 @@ pub struct Compiler<'ctx> {
 }
 
 impl<'ctx> Compiler<'ctx> {
-    /// Creates a new Compiler instance with debug info enabled.
+
     pub fn new(context: &'ctx Context, opt_level: OptimizationLevel) -> Self {
         let builder = context.create_builder();
         let module = context.create_module("quantica_module");
 
-        // Initialize debug info
+      
         let (debug_builder, compile_unit) = module.create_debug_info_builder(
-            true, // allow_unresolved
-            DWARFSourceLanguage::C, // Use C as base language
-            "quantica_main.qc", // filename
-            ".", // directory
-            "Quantica Compiler v0.1.0", // producer
-            false, // is_optimized (set based on opt_level if needed)
-            "", // compiler flags
-            0, // runtime version
-            "", // split name
-            DWARFEmissionKind::Full, // emission kind
-            0, // dwo_id
-            false, // split_debug_inlining
-            false, // debug_info_for_profiling
-            "", // sysroot
-            "", // sdk
+            true, 
+            DWARFSourceLanguage::C,
+            "quantica_main.qc", 
+            ".", 
+            "Quantica Compiler v0.1.0", 
+            false, 
+            "", 
+            0, 
+            "", 
+            DWARFEmissionKind::Full,
+            0,
+            false,
+            false,
+            "",
+            "",
         );
 
         Target::initialize_all(&InitializationConfig::default());
@@ -186,7 +186,7 @@ impl<'ctx> Compiler<'ctx> {
             execution_engine.add_global_mapping(&rt_measure, quantica_rt_measure as usize);
         }
 
-        // Initialize debug type cache
+        
         let di_types = HashMap::new();
         
         Self {
@@ -212,12 +212,12 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
-    /// Finalize debug info (call after compilation)
+    
     pub fn finalize_debug_info(&self) {
         self.debug_builder.finalize();
     }
 
-    /// Create or get a cached debug type
+    
     fn get_or_create_di_type(&mut self, ty: &Type) -> DIType<'ctx> {
         let type_name = format!("{:?}", ty);
         
@@ -229,8 +229,8 @@ impl<'ctx> Compiler<'ctx> {
             Type::Int | Type::Int64 => {
                 self.debug_builder.create_basic_type(
                     "i64",
-                    64, // size in bits
-                    0x05, // DW_ATE_signed
+                    64,
+                    0x05,
                     DIFlags::PUBLIC,
                 ).unwrap().as_type()
             }
@@ -270,7 +270,7 @@ impl<'ctx> Compiler<'ctx> {
                 self.debug_builder.create_basic_type(
                     "f64",
                     64,
-                    0x04, // DW_ATE_float
+                    0x04,
                     DIFlags::PUBLIC,
                 ).unwrap().as_type()
             }
@@ -286,29 +286,29 @@ impl<'ctx> Compiler<'ctx> {
                 self.debug_builder.create_basic_type(
                     "bool",
                     1,
-                    0x02, // DW_ATE_boolean
+                    0x02,
                     DIFlags::PUBLIC,
                 ).unwrap().as_type()
             }
             Type::String => {
-                // Create pointer type for strings
+               
                 let i8_type = self.debug_builder.create_basic_type(
                     "char",
                     8,
-                    0x06, // DW_ATE_signed_char
+                    0x06,
                     DIFlags::PUBLIC,
                 ).unwrap().as_type();
                 
                 self.debug_builder.create_pointer_type(
                     "string",
                     i8_type,
-                    64, // pointer size in bits
-                    0, // alignment
+                    64,
+                    0,
                     AddressSpace::default(),
                 ).as_type()
             }
             _ => {
-                // Default to i64 for unknown types
+                
                 self.debug_builder.create_basic_type(
                     "unknown",
                     64,
@@ -322,7 +322,7 @@ impl<'ctx> Compiler<'ctx> {
         di_type
     }
 
-    /// Set debug location for the current instruction
+    
     fn set_debug_location(&mut self, line: u32, column: u32, scope: DIScope<'ctx>) {
         let location = self.debug_builder.create_debug_location(
             self.context,
@@ -335,13 +335,13 @@ impl<'ctx> Compiler<'ctx> {
         self.builder.set_current_debug_location(location);
     }
 
-    /// Clear debug location
+  
     fn clear_debug_location(&mut self) {
         self.current_debug_location = None;
         self.builder.unset_current_debug_location();
     }
 
-    /// Run optimization passes on the module
+   
     pub fn optimize_module(&self, _opt_level: OptimizationLevel) -> Result<(), String> {
         let passes: &[&str] = &[
             "instcombine", 
@@ -558,7 +558,7 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
-    /// The main entry point for compiling a Quantica AST.
+  
     pub fn compile_program(&mut self, program: &ASTNode) -> Result<(), String> {
         if let ASTNode::Program(statements) = program {
             for stmt in statements {
@@ -609,7 +609,7 @@ impl<'ctx> Compiler<'ctx> {
         self.module.print_to_stderr();
     }
 
-    /// Compiles a single statement.
+    
     fn compile_statement(&mut self, node: &ASTNode, current_function: FunctionValue<'ctx>) -> Result<(), String> {
         match node {
             ASTNode::LetDeclaration { 
@@ -777,12 +777,12 @@ impl<'ctx> Compiler<'ctx> {
         let alloca = self.builder.build_alloca(llvm_type, name).map_err(|e| e.to_string())?;
         let _ = self.builder.build_store(alloca, value);
         
-        // Add debug info for local variable
+        
         if let Some(di_scope) = self.get_current_di_scope(current_function) {
             let di_type = if let Some(quantica_type) = type_annotation {
                 self.get_or_create_di_type(quantica_type)
             } else {
-                // Create a debug type based on the LLVM type
+                
                 self.create_di_type_from_llvm(llvm_type)
             };
             
@@ -790,11 +790,11 @@ impl<'ctx> Compiler<'ctx> {
                 di_scope,
                 name,
                 self.compile_unit.get_file(),
-                1, // line number - should be extracted from AST
+                1, 
                 di_type,
-                true, // always_preserve
+                true, 
                 DIFlags::ZERO,
-                0, // alignment
+                0, 
             );
             
             self.debug_builder.insert_declare_at_end(
@@ -830,14 +830,14 @@ impl<'ctx> Compiler<'ctx> {
             self.debug_builder.create_basic_type(
                 &format!("i{}", bit_width),
                 bit_width as u64,
-                0x05, // DW_ATE_signed
+                0x05,
                 DIFlags::PUBLIC,
             ).unwrap().as_type()
         } else if llvm_type.is_float_type() {
             self.debug_builder.create_basic_type(
                 "f64",
                 64,
-                0x04, // DW_ATE_float
+                0x04,
                 DIFlags::PUBLIC,
             ).unwrap().as_type()
         } else if llvm_type.is_pointer_type() {
@@ -856,7 +856,7 @@ impl<'ctx> Compiler<'ctx> {
                 AddressSpace::default(),
             ).as_type()
         } else {
-            // Default
+           
             self.debug_builder.create_basic_type(
                 "unknown",
                 64,
@@ -1027,7 +1027,7 @@ impl<'ctx> Compiler<'ctx> {
         Ok(call_site)
     }
 
-    /// Compiles a Function Declaration into an LLVM Function with debug info.
+    
     fn compile_function(
         &mut self,
         name: &str,
@@ -1059,14 +1059,13 @@ impl<'ctx> Compiler<'ctx> {
 
         let function = self.module.add_function(name, fn_return_type, None);
         
-        // Create debug info for function
-        let di_file = self.compile_unit.get_file();
-        let line_no = 1; // Should be extracted from AST location info
         
-        // Create parameter types for debug info
+        let di_file = self.compile_unit.get_file();
+        let line_no = 1;
+        
+        
         let mut di_param_types = vec![];
         
-        // Add return type
         let di_return_type = match return_type_node {
             Some(Type::None) | None => {
                 self.debug_builder.create_basic_type(
@@ -1079,7 +1078,7 @@ impl<'ctx> Compiler<'ctx> {
             Some(t) => self.get_or_create_di_type(t),
         };
         
-        // Add all parameter types (return type first, then parameters)
+      
         di_param_types.push(di_return_type);
         
         for param in params {
@@ -1097,15 +1096,15 @@ impl<'ctx> Compiler<'ctx> {
         let di_function = self.debug_builder.create_function(
             di_file.as_debug_info_scope(),
             name,
-            Some(name), // linkage name
+            Some(name), 
             di_file,
             line_no,
             di_subroutine_type,
-            true, // is_local_to_unit
-            true, // is_definition
+            true, 
+            true, 
             line_no,
             DIFlags::ZERO,
-            false, // is_optimized
+            false, 
         );
         
         function.set_subprogram(di_function);
@@ -1113,7 +1112,7 @@ impl<'ctx> Compiler<'ctx> {
         let entry_block = self.context.append_basic_block(function, "entry");
         self.builder.position_at_end(entry_block);
 
-        // Set debug location for function entry
+        
         self.set_debug_location(line_no, 0, di_function.as_debug_info_scope());
 
         let attribute_name = if name.starts_with("_hot_") {
@@ -1125,7 +1124,7 @@ impl<'ctx> Compiler<'ctx> {
         };
 
         if !attribute_name.is_empty() {
-            // Get the attribute kind ID
+
             let kind_id = inkwell::attributes::Attribute::get_named_enum_kind_id(attribute_name);
             
             let attribute = self.context.create_enum_attribute(kind_id, 1);
@@ -1142,16 +1141,16 @@ impl<'ctx> Compiler<'ctx> {
                 .map_err(|e| e.to_string())?;
             let _ = self.builder.build_store(alloca, param);
             
-            // Create debug info for parameter
+            
             let di_param_type = self.get_or_create_di_type(&ast_param.param_type);
             let di_param_var = self.debug_builder.create_parameter_variable(
                 di_function.as_debug_info_scope(),
                 &ast_param.name,
-                (i + 1) as u32, // arg_no (1-indexed)
+                (i + 1) as u32, 
                 di_file,
                 line_no,
                 di_param_type,
-                true, // always_preserve
+                true, 
                 DIFlags::ZERO,
             );
             
@@ -1181,7 +1180,7 @@ impl<'ctx> Compiler<'ctx> {
             }
         }
         
-        // Clear debug location after function
+       
         self.clear_debug_location();
         
         self.variables = old_variables;
@@ -1193,7 +1192,7 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
-    /// Compiles a Block of statements
+   
     fn compile_block(&mut self, node: &ASTNode, current_function: FunctionValue<'ctx>) -> Result<(), String> {
         if let ASTNode::Block(statements) = node {
             for stmt in statements {
@@ -1205,7 +1204,7 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
-    /// Compiles a Return statement
+    
     fn compile_return(&mut self, value_node: &Option<Box<ASTNode>>, current_function: FunctionValue<'ctx>) -> Result<(), String> {
         if let Some(expr) = value_node {
             let value = self.compile_expression(expr, current_function)?;
@@ -1660,4 +1659,5 @@ impl<'ctx> Compiler<'ctx> {
             "indices_ptr"
         ).map_err(|e| e.to_string())
     }
+
 }
