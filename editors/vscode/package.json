@@ -1,0 +1,30 @@
+{
+  "name": "quantica",
+  "displayName": "Quantica",
+  "description": "Language support for Quantica",
+  "version": "0.1.0",
+  "publisher": "Quantica-foundation",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Quantica-Foundation/quantica-lang.git"
+  },
+  "engines": {
+    "vscode": "*"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "quantica",
+      "aliases": ["Quantica", "quantica"],
+      "extensions": [".qc"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "quantica",
+      "scopeName": "source.quantica",
+      "path": "./syntaxes/quantica.tmLanguage.json"
+    }]
+  }
+}
