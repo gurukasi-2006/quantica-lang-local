@@ -1,0 +1,73 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Quantica",
+	"patterns": [
+		{ "include": "#comments" },
+		{ "include": "#strings" },
+		{ "include": "#keywords" },
+		{ "include": "#storage" },
+		{ "include": "#types" },
+		{ "include": "#constants" },
+		{ "include": "#quantum" },
+		{ "include": "#functions" }
+	],
+	"repository": {
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.line.double-slash.quantica",
+					"match": "//.*$"
+				}
+			]
+		},
+		"strings": {
+			"name": "string.quoted.double.quantica",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{ "name": "constant.character.escape.quantica", "match": "\\\\." }
+			]
+		},
+		"keywords": {
+			"patterns": [
+				{
+					"name": "keyword.control.quantica",
+					"match": "\\b(if|elif|else|match|case|for|in|while|break|continue|return|import|from|as)\\b"
+				},
+				{
+					"name": "keyword.other.quantica",
+					"match": "\\b(print|echo|measure|apply)\\b"
+				}
+			]
+		},
+		"storage": {
+			"name": "storage.type.quantica",
+			"match": "\\b(let|mut|const|func|circuit|class|module|package|quantum)\\b"
+		},
+		"types": {
+			"name": "support.type.quantica",
+			"match": "\\b(Int|Int8|Int16|Int32|Int64|Float|Float32|Float64|String|Bool|Qubit|QuantumRegister)\\b"
+		},
+		"constants": {
+			"name": "constant.language.quantica",
+			"match": "\\b(True|False|None|PI|TAU|E)\\b"
+		},
+		"quantum": {
+			"patterns": [
+				{
+					"name": "support.function.gate.quantica",
+					"match": "\\b(Hadamard|CNOT|X|Y|Z|S|T|Swap|Reset|CZ|CS|CT|CPhase|U|CCX|Toffoli|RX|RY|RZ)\\b"
+				},
+				{
+					"name": "keyword.operator.quantum.quantica",
+					"match": "\\b(dagger|controlled)\\b"
+				}
+			]
+		},
+		"functions": {
+			"name": "entity.name.function.quantica",
+			"match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)(?=\\()"
+		}
+	},
+	"scopeName": "source.quantica"
+}
