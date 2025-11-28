@@ -914,70 +914,7 @@ impl Lexer {
     }
 
 
-    fn doc_comment(&mut self) -> Result<Token, String> {
-    self.advance(); // Consume the 2nd '/'
-    self.advance(); // Consume the 3rd '/'
-
-    let start_line = self.line;
-    let mut content = String::new();
-
-    loop {
-        match self.current_char() {
-            Ok('/') => {
-                self.advance(); 
-                
-                if self.current_char().ok() == Some('/') && self.peek() == Some('/') {
-                    self.advance(); // Consume 2nd '/'
-                    self.advance(); // Consume 3rd '/'
-                    
-               
-                    let trimmed_content = content.trim();
-                    let lines: Vec<&str> = trimmed_content.lines().collect();
-                    if lines.is_empty() {
-                        return Ok(Token::DocComment(String::new()));
-                    }
-                    
-               
-                    let common_indent = lines.iter()
-                        .filter(|line| !line.trim().is_empty())
-                        .map(|line| line.chars().take_while(|&c| c.is_whitespace()).count())
-                        .min()
-                        .unwrap_or(0);
-
-                
-                    let cleaned_lines: Vec<String> = lines.iter()
-                        .map(|line| {
-                            if line.len() >= common_indent {
-                                line[common_indent..].to_string()
-                            } else {
-                                line.to_string() 
-                            }
-                        })
-                        .collect();
-                    
-                    return Ok(Token::DocComment(cleaned_lines.join("\n")));
-                }
-             
-                content.push('/');
-            }
-            Ok('\n') => {
-                self.advance();
-                content.push('\n');
-            }
-            Ok(ch) => {
-                self.advance(); 
-                content.push(ch);
-            }
-            Err(_) => {
-     
-                return Err(format!(
-                    "Unterminated documentation comment (///...///) starting at line {}",
-                    start_line
-                ));
-            }
-        }
-    }
-}
+    
 
     fn advance(&mut self) {
     if !self.is_at_end() {
@@ -1173,5 +1110,6 @@ mod tests {
     }
 
 }
+
 
 
