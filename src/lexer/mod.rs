@@ -28,55 +28,37 @@ impl Lexer {
         let mut tokens = Vec::new();
         
         while !self.is_at_end() {
-            
-
             loop {
                 if self.start_of_line {
-                self.handle_indentation(&mut tokens)?;
-            }
+                    self.handle_indentation(&mut tokens)?;
+                }
                 self.skip_whitespace_except_newline(); 
-
+    
                 if self.current_char().ok() == Some('/') {
                     if self.peek() == Some('/') {
-                        
-                        if self.peek_n(2) == Some('/') { 
-                          
-                            let start_col = self.column;
-                            self.advance(); 
-                            
-                            let doc_token = self.doc_comment()?; 
-                            
-                            let length = self.column - start_col;
-                            tokens.push(self.make_token(doc_token, length));
-                            continue; 
-                             
-                        } else { 
-                           
-                            self.advance(); 
-                            self.skip_single_line_comment(); 
-                            continue; 
-                        }
-
+                        // Single-line comment
+                        self.advance(); 
+                        self.skip_single_line_comment(); 
+                        continue; 
+                    } else if self.peek() == Some('*') {
+                        // Multiline comment /* ... */
+                        self.advance(); 
+                        self.advance();
+                        self.skip_multiline_comment()?;
+                        continue;
                     } else {
-                  
+                        // Division operator
                         break;
                     }
                 } else {
-                
                     break; 
                 }
-             
             }
-           
-
+    
             if self.is_at_end() {
                 break;
             }
-            if self.is_at_end() {
-                break;
-            }
-
-           
+    
             if self.current_char().ok() == Some('\n') {
                 self.advance();
                 tokens.push(self.make_token(Token::Newline, 1));
@@ -1167,3 +1149,4 @@ mod tests {
     }
 
 }
+
