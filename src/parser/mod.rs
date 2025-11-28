@@ -378,38 +378,7 @@ impl Parser {
             loc,
         })
     }
-    fn consume_doc_comment(&mut self) -> Option<String> {
-        let mut comments: Vec<String> = Vec::new();
-
-     
-        loop {
-            let has_doc_comment = if let Some(token) = self.tokens.get(self.position) {
-                matches!(token.token, Token::DocComment(_))
-            } else {
-                false
-            };
-
-            if has_doc_comment {
-                if let Some(token) = self.tokens.get(self.position) {
-                    if let Token::DocComment(content) = &token.token {
-                        comments.push(content.clone());
-                        self.advance();
-                        self.skip_newlines(); 
-                    }
-                }
-            } else {
-                
-                break;
-            }
-        }
-
-        
-        if comments.is_empty() {
-            None
-        } else {
-            Some(comments.join("\n"))
-        }
-    }
+    
     
     fn parse_let_declaration(&mut self,doc_comment: Option<String>) -> Result<ASTNode, String> {
         self.expect(&Token::Let)?;
@@ -1596,3 +1565,4 @@ use crate::lexer::Lexer;
         }
 
     }
+
