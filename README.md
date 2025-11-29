@@ -42,7 +42,7 @@ cd quantica-lang
 cargo build --release
 
 # 3. The executable will be at ./target/release/quantica
-#    Add this folder to your PATH or copy the binary to /usr/local/bin
+Add this folder to your PATH or copy the binary to /usr/local/bin
 ```
 ## Known Limitations
 - Match expressions incomplete (use if/elif/else)
