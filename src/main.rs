@@ -9,6 +9,7 @@ mod codegen;
 mod linker;
 mod runtime;
 
+use std::time::Instant;
 use crate::environment::Environment;
 use crate::evaluator::Evaluator;
 use crate::type_checker::TypeChecker;
@@ -56,9 +57,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for arg in args.iter().skip(1) {
 
-        if arg == "--ast" {                   
+        if arg == "--ast" {                     
             show_ast = true;
-        } else if arg == "--tokens" {        
+        } else if arg == "--tokens" {          
             show_tokens = true;
         }else if arg == "--v"{
             verbose=true;
@@ -96,7 +97,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
    
     if args.len() < 2 {
         println!("Starting REPL mode (type '.quit' to exit, '.clear' to reset).");
-        run_repl(); 
+        run_repl(); // Run REPL if no file is given
         return Ok(());
     }
 
@@ -150,7 +151,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let filename = &args[2];
         let object_file = "output.o";
         
-        
+        // Determine output executable name from source file
         let exe_name = Path::new(filename)
             .file_stem()
             .and_then(|s| s.to_str())
@@ -212,7 +213,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     
-
+    // Full compilation pipeline: Lex + Parse
     if let Some(file) = filename {
         compile_file(file, show_ast, show_tokens, verbose);
     } else {
@@ -239,7 +240,7 @@ fn compile_file(filename: &str,show_ast: bool, show_tokens: bool,verbose:bool) {
     if verbose {
         println!("📄 Compiling: {}\n", filename);
     }
-   
+    // Read source
     let source = match fs::read_to_string(filename) {
         Ok(content) => content,
         Err(e) => {
@@ -253,7 +254,7 @@ fn compile_file(filename: &str,show_ast: bool, show_tokens: bool,verbose:bool) {
         println!("{}", source);
         println!("{:-<60}\n", "");
     }
-
+    // Lexical Analysis
     if verbose{
         println!("🔤 Phase 1: Lexical Analysis");
     }
@@ -281,7 +282,7 @@ fn compile_file(filename: &str,show_ast: bool, show_tokens: bool,verbose:bool) {
         println!("==============\n");
     }
     
-
+    // Syntax Analysis (Parsing)
     if verbose{
         println!("🌳 Phase 2: Syntax Analysis");
     }
@@ -313,7 +314,7 @@ fn compile_file(filename: &str,show_ast: bool, show_tokens: bool,verbose:bool) {
         }
     }
     
-  
+    // Display AST (Optional, but good for debugging)
     
     if show_ast {
         println!("=== ABSTRACT SYNTAX TREE ===");
@@ -323,21 +324,24 @@ fn compile_file(filename: &str,show_ast: bool, show_tokens: bool,verbose:bool) {
     
     
     
-  
+    //INTERPRETATION (EVALUATION)
     if verbose{
         println!("✨ Phase 3: Interpretation");
     }
-   
+    // Wrap the root environment in Rc<RefCell<>>
     let env = std::rc::Rc::new(std::cell::RefCell::new(Environment::new()));
 
     if verbose{
         println!("Program Output:");
         println!("{:-<60}", "");
     }
-
+    // Pass a reference to the Rc
+    let start_time = Instant::now();
     let evaluation_result = Evaluator::evaluate_program(&ast, &env);
+    let duration = start_time.elapsed();
     
     println!("{:-<60}", "");
+    println!("⏱️  Interpreter Time: {:.6} seconds", duration.as_secs_f64());
     
     match evaluation_result {
         Ok(_) => {
@@ -383,40 +387,39 @@ fn print_help() {
 fn compile_file_llvm(filename: &str, output_file: &str, emit_llvm: bool, opt_level: OptimizationLevel,enable_lto: bool,target: CompilationTarget) -> Result<(), String> {
     println!("📄 Compiling: {}\n", filename);
 
-   
+    // Read source
     let source = fs::read_to_string(filename)
         .map_err(|e| format!("Failed to read file '{}': {}", filename, e))?;
 
-  
+    // Lexical Analysis
     println!("🔤 Phase 1: Lexical Analysis");
     let mut lexer = Lexer::new(&source);
     let tokens = lexer.tokenize()
         .map_err(|e| format!("Lexer error: {}", e))?;
     
- 
+    //Syntax Analysis (Parsing)
     println!("🌳 Phase 2: Syntax Analysis");
     let mut parser = Parser::new(tokens);
     let ast = parser.parse()
         .map_err(|e| format!("Parser error: {}", e))?;
 
- 
+    //Type Checking
     println!("🔬 Phase 3: Type Checking");
     TypeChecker::check_program(&ast)
         .map_err(|e| format!("Type error: {}", e))?;
     println!("✓ Type check succeeded!\n");
 
- 
 
- 
+    //Initialize LLVM
     println!("🤖 Phase 4: Code Generation (LLVM)");
     let context = Context::create();
     let mut compiler = Compiler::new(&context,opt_level);
 
-
+    //Compile Program
     compiler.compile_program(&ast)?;
     println!("   -> Generated LLVM IR");
 
-
+    //Optimize Module
     compiler.optimize_module(opt_level)?;
     println!("   -> Optimized module");
 
@@ -425,27 +428,29 @@ fn compile_file_llvm(filename: &str, output_file: &str, emit_llvm: bool, opt_lev
 
     let module_name = Path::new(filename).file_stem().and_then(|s| s.to_str()).unwrap_or("quantica_program");
     
- 
+    // Simulate exporting the graph for the TPU
     let hlo_ir = compiler.export_to_hlo_ir(module_name)?;
     println!("   -> XLA/HLO IR Exported");
     
+
     
+    // --- LLVM IR Dump
     if emit_llvm {
         println!("\n--- GENERATED LLVM IR (Optimized) ---");
         compiler.dump_ir();
         println!("-------------------------------------\n");
         
-     
+        // dump the specialized HLO IR when the flag is present
         println!("--- XLA/HLO IR (TPU Target) ---");
         println!("{}", hlo_ir);
         println!("-------------------------------\n");
     }
 
     if target != CompilationTarget::HostCPU {
-      
+        // GPU/TPU compilation path: generate the IR and skip the linking to a .exe
         println!("⚠️ Target is {:?}. Skipping AOT linking and outputting IR only.", target);
         
-    
+        // Simulating the final HLO/SPIR-V export by calling the exporter
         let module_name = Path::new(filename).file_stem().and_then(|s| s.to_str()).unwrap_or("quantica_program");
         let hlo_ir = compiler.export_to_hlo_ir(module_name)?;
 
@@ -454,10 +459,10 @@ fn compile_file_llvm(filename: &str, output_file: &str, emit_llvm: bool, opt_lev
             println!("{}", hlo_ir);
             println!("-------------------------------\n");
         }
-        return Ok(());
+        return Ok(()); //
     }
     
-    
+    // Save to object file
     compiler.write_to_object_file(output_file)?;
     println!("   -> Emitted object file");
 
@@ -467,10 +472,10 @@ fn compile_file_llvm(filename: &str, output_file: &str, emit_llvm: bool, opt_lev
 }
 
 
-fn run_jit_file(filename: &str, emit_llvm: bool, opt_level: OptimizationLevel,target: CompilationTarget) -> Result<(), String> {
-    println!("📄 JIT Compiling and Running: {}\n", filename);
+fn run_jit_file(filename: &str, emit_llvm: bool, opt_level: OptimizationLevel, target: CompilationTarget) -> Result<(), String> {
+    println!("🚀 JIT Compiling and Running: {}\n", filename);
 
- 
+    // Read, Lex, Parse
     let source = fs::read_to_string(filename)
         .map_err(|e| format!("Failed to read file '{}': {}", filename, e))?;
 
@@ -482,7 +487,7 @@ fn run_jit_file(filename: &str, emit_llvm: bool, opt_level: OptimizationLevel,ta
     let ast = parser.parse()
         .map_err(|e| format!("Parser error: {}", e))?;
 
-
+    //  Type Check
     TypeChecker::check_program(&ast)
         .map_err(|e| format!("Type error: {}", e))?;
 
@@ -492,23 +497,17 @@ fn run_jit_file(filename: &str, emit_llvm: bool, opt_level: OptimizationLevel,ta
         println!("🚀 Accelerating with XLA/TPU Backend...");
     }
     
-   
     println!("⚙️ Phase 3: Compiling for JIT...");
 
-   
     let jit_program = if let ASTNode::Program(ref nodes) = ast {
-      
         let has_main = nodes.iter().any(|node| {
             matches!(node, ASTNode::FunctionDeclaration { name, .. } if name == "main")
         });
         
         if has_main {
-       
             ast
         } else {
-     
             let main_function_node = ASTNode::FunctionDeclaration {
-                
                 name: "main".to_string(),
                 parameters: Vec::new(),
                 return_type: None,
@@ -520,10 +519,9 @@ fn run_jit_file(filename: &str, emit_llvm: bool, opt_level: OptimizationLevel,ta
         return Err("Expected ASTNode::Program at root.".to_string());
     };
 
-
     println!("🤖 Phase 4: JIT Compilation & Execution");
     let context = Context::create();
-    let mut compiler = Compiler::new(&context,opt_level);
+    let mut compiler = Compiler::new(&context, opt_level);
 
     let function_names = if let ASTNode::Program(s) = &jit_program {
         s.iter().filter_map(|stmt| {
@@ -538,10 +536,7 @@ fn run_jit_file(filename: &str, emit_llvm: bool, opt_level: OptimizationLevel,ta
     };
 
     compiler.enable_jit_profiling(function_names)?;
-
-    
     compiler.compile_jit_program(&jit_program)?;
-
     compiler.finalize_debug_info();
 
     if emit_llvm {
@@ -551,9 +546,21 @@ fn run_jit_file(filename: &str, emit_llvm: bool, opt_level: OptimizationLevel,ta
     } 
     
     println!("✨ Program Output:");
-    println!("{:-<60}", "");
+    println!();
+    
+    // Flush stdout BEFORE executing JIT code
+    use std::io::Write;
+    let _ = std::io::stdout().flush();
+    
+    let start_time = Instant::now();
     compiler.run_jit()?;
-    println!("{:-<60}", "");
+    let duration = start_time.elapsed();
+    
+    // Flush stdout AFTER JIT execution
+    let _ = std::io::stdout().flush();
+    
+    println!();
+    println!("⏱️  JIT Execution Time: {:.6} seconds", duration.as_secs_f64());
 
     Ok(())
 }
@@ -583,7 +590,7 @@ fn run_test_suite() {
                             let filename = path.to_str().unwrap_or("unknown file");
                             print!("Running test: {} ... ", filename);
                             
-                         
+                            // Run the test file and capture its result
                             match run_test_file(filename) {
                                 Ok(()) => {
                                     println!("PASS ✅");
@@ -615,54 +622,52 @@ fn run_test_suite() {
     println!("{:-<60}", "");
 
     if failed_count > 0 {
-        std::process::exit(1);
+        std::process::exit(1); // Exit with error if any test failed
     }
 }
 
 
+/// Runs the full pipeline on a single file, returning a Result.
 fn run_test_file(filename: &str) -> Result<(), String> {
     
-
+    //Read source
     let source = fs::read_to_string(filename)
         .map_err(|e| format!("Failed to read file '{}': {}", filename, e))?;
     
-  
+    // Lexical Analysis
     let mut lexer = Lexer::new(&source);
     let tokens = lexer.tokenize()
         .map_err(|e| format!("Lexer error: {}", e))?;
     
-   
+    // Syntax Analysis (Parsing)
     let mut parser = Parser::new(tokens);
     let ast = parser.parse()
         .map_err(|e| format!("Parser error: {}", e))?;
     
-   
+    // Type Checking
     TypeChecker::check_program(&ast)
         .map_err(|e| format!("Type error: {}", e))?;
     
- 
+    //Interpretation (Evaluation)
     let env = std::rc::Rc::new(std::cell::RefCell::new(Environment::new()));
     Evaluator::evaluate_program(&ast, &env)
-        .map_err(|e| format!("Runtime Error: {}", e))?; 
+        .map_err(|e| format!("Runtime Error: {}", e))?; // assert() failure will be caught here
 
- 
+    //If all steps passed:
     Ok(())
 }
 
-
-
-
-fn print_ast(node: &ASTNode, indent: usize) {
+fn print_ast(node: &ASTNode, indent: usize) { 
     let prefix = "  ".repeat(indent);
     
     match node {
-        ASTNode::Program(statements) => {
+        ASTNode::Program(statements) => { 
             println!("{}Program:", prefix);
             for stmt in statements {
                 print_ast(stmt, indent + 1);
             }
         }
-        ASTNode::LetDeclaration { .. } => { 
+        ASTNode::LetDeclaration { .. } => {
              println!("{}LetDeclaration", prefix);
              
         }
@@ -741,7 +746,7 @@ fn print_ast(node: &ASTNode, indent: usize) {
             print_ast(left, indent + 1);
             print_ast(right, indent + 1);
         }
-        
+   
         ASTNode::ParameterizedGate { ref name, ref parameters, loc: _, ..} => {
             println!("{}Parameterized gate: {} with params {:?}", prefix, name, parameters);
         },
@@ -761,7 +766,7 @@ fn print_ast(node: &ASTNode, indent: usize) {
         ASTNode::Apply { gate_expr, arguments, .. } => {
             println!("{}Apply ({} args):", prefix, arguments.len());
             println!("{}  Gate:", prefix);
-            print_ast(gate_expr, indent + 2);
+            print_ast(gate_expr, indent + 2); // Print the gate expression
             println!("{}  Args:", prefix);
             for arg in arguments {
                 print_ast(arg, indent + 2);
@@ -942,17 +947,18 @@ fn run_lexer_only(filename: &str) {
 }
 
 fn run_repl() {
-  
+    // Create persistent environments for the *entire session*
     let runtime_env = std::rc::Rc::new(std::cell::RefCell::new(Environment::new()));
     let type_env = std::rc::Rc::new(std::cell::RefCell::new(TypeEnvironment::new()));
-  
+    
+    // Prefill the type environment just once
     TypeChecker::prefill_environment(&type_env);
 
     let mut source_buffer = String::new();
     let mut is_continuation = false;
 
     loop {
-        
+        // 3. Set prompt and read line
         let prompt = if is_continuation { ".. " } else { ">> " };
         print!("{}", prompt);
         io::stdout().flush().unwrap();
@@ -965,7 +971,7 @@ fn run_repl() {
 
         let trimmed_line = line.trim();
 
-        
+        // Handle REPL commands
         if !is_continuation {
             if trimmed_line == ".quit" || trimmed_line == ".exit" {
                 break;
@@ -978,25 +984,25 @@ fn run_repl() {
             }
         }
 
- 
+        //  Append to buffer
         source_buffer.push_str(&line);
         if source_buffer.trim().is_empty() {
             continue;
         }
 
-      
+        // Try to compile the buffer
         
-     
+        // Lexer
         let mut lexer = Lexer::new(&source_buffer);
         let tokens = match lexer.tokenize() {
             Ok(t) => t,
             Err(e) if e.contains("Unterminated") => {
-               
+                // Unclosed string or comment, wait for more
                 is_continuation = true;
                 continue;
             }
             Err(e) => {
-             
+                // Real lexer error, report and reset
                 println!("Lexer Error: {}", e);
                 source_buffer.clear();
                 is_continuation = false;
@@ -1004,7 +1010,7 @@ fn run_repl() {
             }
         };
 
-     
+        // Parser
         let mut parser = Parser::new(tokens.clone());
         let ast = match parser.parse() {
             Ok(tree) => tree,
@@ -1014,7 +1020,7 @@ fn run_repl() {
                 continue;
             }
             Err(e) => {
-           
+                // Real parser error, report and reset
                 println!("Parser Error: {}", e);
                 source_buffer.clear();
                 is_continuation = false;
@@ -1022,58 +1028,58 @@ fn run_repl() {
             }
         };
 
-    
+        //complete AST. Process it statement by statement.
         if let ASTNode::Program(statements) = ast {
             for stmt in statements {
-            
+                //Type Check the single statement
                 let type_check_result = TypeChecker::check(&stmt, &type_env, None);
                 if let Err(e) = type_check_result {
                     println!("Type Error: {}", e);
-                
+                    // Don't execute if type check fails
                     break; 
                 }
 
-               
+                //  Evaluate the single statement
                 let eval_result = Evaluator::evaluate(&stmt, &runtime_env);
                 match eval_result {
                     Ok(RuntimeValue::None) => { /* Don't print None */ }
                     Ok(value) => {
-                        println!("{}", value);
+                        println!("{}", value); // Print result
                     }
                     Err(e) => {
                         println!("Runtime Error: {}", e);
-                      
+                        // Stop processing this block
                         break;
                     }
                 }
             }
         }
 
-       
+        // Clear buffer and reset prompt for next input
         source_buffer.clear();
         is_continuation = false;
     }
 }
 fn run_doc_generator(filename: &str, output_file: &str) -> Result<(), String> {
     
-
+    // Read source
     println!("   -> Step 1: Reading source file...");
     let source = fs::read_to_string(filename)
         .map_err(|e| format!("Failed to read file '{}': {}", filename, e))?;
     
-  
+    // Lexical Analysis
     println!("   -> Step 2: Lexing tokens...");
     let mut lexer = Lexer::new(&source);
-    let tokens = lexer.tokenize() 
+    let tokens = lexer.tokenize()
         .map_err(|e| format!("Lexer error: {}", e))?;
     
- 
+    // Syntax Analysis (Parsing)
     println!("   -> Step 3: Parsing AST...");
     let mut parser = Parser::new(tokens);
-    let ast = parser.parse() 
+    let ast = parser.parse() // 
         .map_err(|e| format!("Parser error: {}", e))?;
     
-   
+    // 4. Generate Documentation
     println!("   -> Step 4: Generating docs...");
     DocGenerator::run(&ast, output_file)?;
     
@@ -1090,6 +1096,4 @@ fn parse_opt_level(arg: &str) -> Result<OptimizationLevel, String> {
         _ => Err(format!("Unknown optimization flag: {}. Use -O0, -O1, -O2, or -O3.", arg)),
     }
 }
-
-//Made by M.Gurukasi from Quantica Foundation
 
