@@ -76,20 +76,20 @@ impl HardwareExecutor {
     
     /// Execute a Quantica program on real hardware
     pub fn execute_on_hardware(&mut self, program: &ASTNode, env: &Rc<RefCell<Environment>>) -> Result<QuantumResult, String> {
-        // Step 1: Record all quantum operations
+        // Record all quantum operations
         self.record_program(program, env)?;
         
-        // Step 2: Build the circuit
+        // Build the circuit
         let circuit = self.recorder.build_circuit();
         
         println!("📡 Submitting to {:?} with {} qubits and {} gates", 
                  self.config.provider, circuit.num_qubits, circuit.gates.len());
         
-        // Step 3: Submit to hardware backend
+        // Submit to hardware backend
         let backend_manager = BackendManager::new(self.config.clone());
         let result = backend_manager.execute_circuit(&circuit)?;
         
-        // Step 4: Process results
+        // Process results
         self.process_results(&result);
         
         Ok(result)
@@ -289,4 +289,5 @@ pub fn parse_hardware_config(args: &[String]) -> Option<QuantumConfig> {
     }
     
     Some(config)
+
 }
