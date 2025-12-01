@@ -42,7 +42,7 @@ impl Default for QuantumConfig {
     }
 }
 
-/// Represents a quantum gate in a hardware-agnostic way
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HardwareGate {
     pub name: String,
@@ -51,39 +51,39 @@ pub struct HardwareGate {
     pub is_dagger: bool,
 }
 
-/// Represents a complete quantum circuit for hardware execution
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HardwareCircuit {
     pub num_qubits: usize,
     pub gates: Vec<HardwareGate>,
-    pub measurements: Vec<usize>, // Which qubits to measure
+    pub measurements: Vec<usize>,
 }
 
-/// Result from quantum hardware execution
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuantumResult {
-    pub counts: HashMap<String, u32>, // Bitstring -> count
+    pub counts: HashMap<String, u32>,
     pub shots: u32,
     pub success: bool,
     pub error_message: Option<String>,
 }
 
-/// Main trait for quantum backends
+
 pub trait QuantumBackend {
-    /// Submit a circuit for execution
+
     fn execute(&self, circuit: &HardwareCircuit, config: &QuantumConfig) -> Result<QuantumResult, String>;
     
-    /// Check if the backend is available
+
     fn is_available(&self) -> bool;
     
-    /// Get list of available devices
+
     fn available_devices(&self) -> Vec<String>;
     
-    /// Optimize circuit for this backend
+
     fn optimize_circuit(&self, circuit: &HardwareCircuit) -> HardwareCircuit;
 }
 
-/// IBM Quantum Backend (via REST API)
+/// IBM Quantum Backend
 pub struct IBMBackend {
     api_url: String,
 }
@@ -95,7 +95,7 @@ impl IBMBackend {
         }
     }
     
-    /// Convert Quantica circuit to OpenQASM 2.0
+
     fn to_qasm(&self, circuit: &HardwareCircuit) -> String {
         let mut qasm = String::new();
         qasm.push_str("OPENQASM 2.0;\n");
@@ -123,13 +123,13 @@ impl IBMBackend {
             
             if gate.is_dagger {
                 qasm.push_str(&format!("// Dagger of: {}", gate_str));
-                // Implement dagger logic (inverse rotation angles, etc.)
+
             } else {
                 qasm.push_str(&gate_str);
             }
         }
         
-        // Add measurements
+
         for (i, &qubit) in circuit.measurements.iter().enumerate() {
             qasm.push_str(&format!("measure q[{}] -> c[{}];\n", qubit, i));
         }
@@ -140,13 +140,13 @@ impl IBMBackend {
 
 impl QuantumBackend for IBMBackend {
     fn execute(&self, circuit: &HardwareCircuit, config: &QuantumConfig) -> Result<QuantumResult, String> {
-        // Convert to QASM
+
         let qasm = self.to_qasm(circuit);
-        
-        // In a real implementation, you would:
-        // 1. Use reqwest to POST the QASM to IBM's API
-        // 2. Poll for job completion
-        // 3. Parse and return results
+        //not implemented due to paid model
+        // In a real implementation(toDO):
+        // Use reqwest to POST the QASM to IBM's API
+        // Poll for job completion
+        // Parse and return results
         
         // For now, return a placeholder
         Ok(QuantumResult {
@@ -158,7 +158,7 @@ impl QuantumBackend for IBMBackend {
     }
     
     fn is_available(&self) -> bool {
-        // Check if IBM API is accessible
+
         true
     }
     
@@ -172,7 +172,7 @@ impl QuantumBackend for IBMBackend {
     }
     
     fn optimize_circuit(&self, circuit: &HardwareCircuit) -> HardwareCircuit {
-        // Implement circuit optimization for IBM hardware
+
         circuit.clone()
     }
 }
@@ -190,7 +190,7 @@ impl AWSBraketBackend {
 
 impl QuantumBackend for AWSBraketBackend {
     fn execute(&self, circuit: &HardwareCircuit, config: &QuantumConfig) -> Result<QuantumResult, String> {
-        // Convert to AWS Braket format and submit
+
         Err("AWS Braket backend not yet implemented".to_string())
     }
     
@@ -210,7 +210,7 @@ impl QuantumBackend for AWSBraketBackend {
     }
 }
 
-/// Backend Manager - selects and manages quantum backends
+
 pub struct BackendManager {
     backends: HashMap<QuantumProvider, Box<dyn QuantumBackend>>,
     config: QuantumConfig,
@@ -220,8 +220,7 @@ impl BackendManager {
     pub fn new(config: QuantumConfig) -> Self {
         let mut backends: HashMap<QuantumProvider, Box<dyn QuantumBackend>> = HashMap::new();
         
-        // Register available backends
-        //backends.insert(QuantumProvider::IBM, Box::new(IBMBackend::new()));
+
         backends.insert(QuantumProvider::IBM, Box::new(IBMQiskitBackend::new()));
         backends.insert(QuantumProvider::AWS, Box::new(AWSBraketBackend::new("us-east-1".to_string())));
         backends.insert(QuantumProvider::GoogleCircuit, Box::new(CirqLocalBackend::new()));
@@ -237,7 +236,7 @@ impl BackendManager {
             return Err(format!("Backend {:?} is not available", self.config.provider));
         }
         
-        // Optimize circuit if requested
+
         let optimized_circuit = if self.config.optimize {
             backend.optimize_circuit(circuit)
         } else {
@@ -287,4 +286,5 @@ mod tests {
         assert!(qasm.contains("h q[0]"));
         assert!(qasm.contains("cx q[0],q[1]"));
     }
+
 }
