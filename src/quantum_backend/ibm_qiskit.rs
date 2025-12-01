@@ -27,7 +27,7 @@ impl IBMQiskitBackend {
         script.push_str(&format!("qc = QuantumCircuit({}, {})\n\n", 
                                 circuit.num_qubits, circuit.num_qubits));
         
-        // Add gates
+        // gates
         for gate in &circuit.gates {
             let gate_code = match gate.name.as_str() {
                 "hadamard" | "h" => format!("qc.h({})", gate.qubits[0]),
@@ -47,7 +47,7 @@ impl IBMQiskitBackend {
             script.push_str(&format!("{}\n", gate_code));
         }
         
-        // Add measurements
+        // measurements
         script.push_str("\n# Measure all qubits\n");
         for i in 0..circuit.num_qubits {
             script.push_str(&format!("qc.measure({}, {})\n", i, i));
@@ -125,4 +125,5 @@ impl QuantumBackend for IBMQiskitBackend {
     fn optimize_circuit(&self, circuit: &HardwareCircuit) -> HardwareCircuit {
         circuit.clone()
     }
+
 }
