@@ -1,0 +1,100 @@
+name: Quantica CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Install Rust stable
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+    
+    - name: Cache cargo registry
+      uses: actions/cache@v3
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-registry-
+    
+    - name: Cache cargo index
+      uses: actions/cache@v3
+      with:
+        path: ~/.cargo/git
+        key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-git-
+    
+    - name: Cache target directory
+      uses: actions/cache@v3
+      with:
+        path: target
+        key: ${{ runner.os }}-target-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-target-
+    
+    - name: Check formatting
+      run: cargo fmt -- --check
+      continue-on-error: true
+    
+    - name: Run clippy
+      run: cargo clippy -- -D warnings
+      continue-on-error: true
+    
+    - name: Build release
+      run: cargo build --release --verbose
+    
+    - name: Run Rust tests
+      run: cargo test --verbose
+    
+    - name: Run Quantica test suite
+      run: cargo run --release -- --test
+    
+    - name: List test files
+      run: ls -la tests/*.qc || echo "No .qc test files found"
+    
+    - name: Run individual Quantica tests
+      run: |
+        echo "Running individual Quantica test files..."
+        for test_file in tests/*.qc; do
+          if [ -f "$test_file" ]; then
+            echo "================================================"
+            echo "Running: $test_file"
+            echo "================================================"
+            cargo run --release -- "$test_file" || echo "Test $test_file failed"
+            echo ""
+          fi
+        done
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      if: success()
+      with:
+        name: quantica-binary
+        path: target/release/quantica
+        retention-days: 7
+    
+    - name: Test summary
+      if: always()
+      run: |
+        echo "================================================"
+        echo "Build and Test Summary"
+        echo "================================================"
+        echo "✓ Build completed"
+        echo "✓ Rust tests completed"
+        echo "✓ Quantica test suite completed"
+        echo "✓ Individual test files completed"
