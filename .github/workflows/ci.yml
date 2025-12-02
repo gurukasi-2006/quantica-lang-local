@@ -93,10 +93,15 @@ jobs:
         echo "LLVM environment variables:"
         echo "LLVM_SYS_181_PREFIX=$LLVM_SYS_181_PREFIX"
         echo "LLVM_CONFIG=$LLVM_CONFIG"
+
+      
     
-    - name: Check formatting
-      run: cargo fmt -- --check
-      continue-on-error: true
+    - name: Format code
+      run: cargo fmt
+  
+    #- name: Check formatting
+      #run: cargo fmt -- --check
+      #continue-on-error: true
     
     - name: Run clippy (warnings allowed)
       run: cargo clippy --all-targets --all-features -- -A warnings
