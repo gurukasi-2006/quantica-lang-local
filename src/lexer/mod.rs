@@ -457,7 +457,7 @@ impl Lexer {
         
                 if self.peek() == Some('.') {
                     self.advance();
-                    self.advance(); .
+                    self.advance();
                     Token::SafeNav
                 } else {
                     self.advance(); 
@@ -1110,6 +1110,7 @@ mod tests {
     }
 
 }
+
 
 
 
