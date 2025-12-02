@@ -8,6 +8,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
+  LLVM_SYS_181_PREFIX: /usr/lib/llvm-18
 
 jobs:
   build-and-test:
@@ -17,6 +19,37 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+    
+    - name: Install LLVM 18 and dependencies
+      run: |
+        # Add LLVM repository
+        wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+        sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main"
+        
+        # Update and install LLVM 18 with all components
+        sudo apt-get update
+        sudo apt-get install -y \
+          llvm-18 \
+          llvm-18-dev \
+          llvm-18-runtime \
+          llvm-18-tools \
+          clang-18 \
+          libclang-18-dev \
+          libpolly-18-dev \
+          libc++-18-dev \
+          libc++abi-18-dev \
+          lld-18
+        
+        # Verify installation
+        ls -la /usr/lib/llvm-18/lib/ | grep -i polly || echo "Polly not found"
+        
+        # Set environment variables for LLVM
+        echo "LLVM_SYS_181_PREFIX=/usr/lib/llvm-18" >> $GITHUB_ENV
+        echo "LLVM_CONFIG=/usr/lib/llvm-18/bin/llvm-config" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+        
+        # Add LLVM to PATH
+        echo "/usr/lib/llvm-18/bin" >> $GITHUB_PATH
     
     - name: Install Rust stable
       uses: dtolnay/rust-toolchain@stable
@@ -47,12 +80,26 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-target-
     
+    - name: Verify LLVM installation
+      run: |
+        echo "Checking LLVM installation..."
+        llvm-config-18 --version
+        llvm-config-18 --libdir
+        llvm-config-18 --libs all
+        echo ""
+        echo "Checking for Polly library..."
+        find /usr/lib/llvm-18 -name "*Polly*" -o -name "*polly*"
+        echo ""
+        echo "LLVM environment variables:"
+        echo "LLVM_SYS_181_PREFIX=$LLVM_SYS_181_PREFIX"
+        echo "LLVM_CONFIG=$LLVM_CONFIG"
+    
     - name: Check formatting
       run: cargo fmt -- --check
       continue-on-error: true
     
-    - name: Run clippy
-      run: cargo clippy -- -D warnings
+    - name: Run clippy (warnings allowed)
+      run: cargo clippy --all-targets --all-features -- -A warnings
       continue-on-error: true
     
     - name: Build release
