@@ -16,7 +16,7 @@ use inkwell::module::Linkage;
 use inkwell::AddressSpace;
 use std::ffi::CString;
 use std::os::raw::{c_int, c_void};
-use inkwell::execution_engine::ExecutionEngine; 
+use inkwell::execution_engine::ExecutionEngine;
 use inkwell::types::VectorType;
 use std::collections::HashMap;
 
@@ -28,7 +28,7 @@ use inkwell::debug_info::{
 
 use crate::runtime::{
     quantica_rt_new_state,
-    quantica_rt_debug_state, 
+    quantica_rt_debug_state,
     quantica_rt_apply_gate,
     quantica_rt_measure
 };
@@ -57,8 +57,8 @@ pub struct Compiler<'ctx> {
     rt_device_free: FunctionValue<'ctx>,
     rt_htod_transfer: FunctionValue<'ctx>,
     rt_dtoh_transfer: FunctionValue<'ctx>,
-    
-    
+
+
     debug_builder: DebugInfoBuilder<'ctx>,
     compile_unit: DICompileUnit<'ctx>,
     di_types: HashMap<String, DIType<'ctx>>,
@@ -71,17 +71,17 @@ impl<'ctx> Compiler<'ctx> {
         let builder = context.create_builder();
         let module = context.create_module("quantica_module");
 
-      
+
         let (debug_builder, compile_unit) = module.create_debug_info_builder(
-            true, 
+            true,
             DWARFSourceLanguage::C,
-            "quantica_main.qc", 
-            ".", 
-            "Quantica Compiler v0.1.0", 
-            false, 
-            "", 
-            0, 
-            "", 
+            "quantica_main.qc",
+            ".",
+            "Quantica Compiler v0.1.0",
+            false,
+            "",
+            0,
+            "",
             DWARFEmissionKind::Full,
             0,
             false,
@@ -106,21 +106,21 @@ impl<'ctx> Compiler<'ctx> {
                 CodeModel::Default,
             )
             .expect("Failed to create target machine");
-        
+
         let execution_engine = module.create_jit_execution_engine(opt_level)
             .expect("Failed to create JIT Execution Engine");
-        
+
         let _i8_type = context.i8_type();
         let i32_type = context.i32_type();
         let ptr_type = context.ptr_type(AddressSpace::default());
         let puts_fn_type = i32_type.fn_type(&[ptr_type.into()], false);
-        
+
         let puts_function = module.add_function(
             "puts",
             puts_fn_type,
             Some(Linkage::External),
         );
-        
+
         let state_ptr_type = context.ptr_type(AddressSpace::default());
         let new_state_fn_type = state_ptr_type.fn_type(&[i32_type.into()], false);
         let rt_new_state = module.add_function(
@@ -186,9 +186,9 @@ impl<'ctx> Compiler<'ctx> {
             execution_engine.add_global_mapping(&rt_measure, quantica_rt_measure as usize);
         }
 
-        
+
         let di_types = HashMap::new();
-        
+
         Self {
             context,
             builder,
@@ -201,8 +201,8 @@ impl<'ctx> Compiler<'ctx> {
             rt_apply_gate,
             rt_measure,
             execution_engine,
-            rt_device_alloc, 
-            rt_device_free,  
+            rt_device_alloc,
+            rt_device_free,
             rt_htod_transfer,
             rt_dtoh_transfer,
             debug_builder,
@@ -212,15 +212,15 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
-    
+
     pub fn finalize_debug_info(&self) {
         self.debug_builder.finalize();
     }
 
-    
+
     fn get_or_create_di_type(&mut self, ty: &Type) -> DIType<'ctx> {
         let type_name = format!("{:?}", ty);
-        
+
         if let Some(cached) = self.di_types.get(&type_name) {
             return *cached;
         }
@@ -291,14 +291,14 @@ impl<'ctx> Compiler<'ctx> {
                 ).unwrap().as_type()
             }
             Type::String => {
-               
+
                 let i8_type = self.debug_builder.create_basic_type(
                     "char",
                     8,
                     0x06,
                     DIFlags::PUBLIC,
                 ).unwrap().as_type();
-                
+
                 self.debug_builder.create_pointer_type(
                     "string",
                     i8_type,
@@ -308,7 +308,7 @@ impl<'ctx> Compiler<'ctx> {
                 ).as_type()
             }
             _ => {
-                
+
                 self.debug_builder.create_basic_type(
                     "unknown",
                     64,
@@ -322,7 +322,7 @@ impl<'ctx> Compiler<'ctx> {
         di_type
     }
 
-    
+
     fn set_debug_location(&mut self, line: u32, column: u32, scope: DIScope<'ctx>) {
         let location = self.debug_builder.create_debug_location(
             self.context,
@@ -335,28 +335,28 @@ impl<'ctx> Compiler<'ctx> {
         self.builder.set_current_debug_location(location);
     }
 
-  
+
     fn clear_debug_location(&mut self) {
         self.current_debug_location = None;
         self.builder.unset_current_debug_location();
     }
 
-   
+
     pub fn optimize_module(&self, _opt_level: OptimizationLevel) -> Result<(), String> {
         let passes: &[&str] = &[
-            "instcombine", 
-            "reassociate", 
-            "gvn", 
-            "simplifycfg", 
+            "instcombine",
+            "reassociate",
+            "gvn",
+            "simplifycfg",
             "mem2reg",
-            "loop-vectorize", 
+            "loop-vectorize",
             "slp-vectorizer",
-            "indvars",       
-            "licm",           
-            "loop-unroll",    
+            "indvars",
+            "licm",
+            "loop-unroll",
             "sroa",
         ];
-        
+
         self.module
             .run_passes(
                 passes.join(",").as_str(),
@@ -377,7 +377,7 @@ impl<'ctx> Compiler<'ctx> {
             declare void @fused_kernel_{} ()\n",
             function_name, function_name
         );
-        
+
         Ok(fusion_summary)
     }
 
@@ -409,10 +409,10 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     fn get_pgo_instrumentation_intrinsic(&self) -> inkwell::values::FunctionValue<'ctx> {
-        let i64_type = self.context.i64_type(); 
-        let i32_type = self.context.i32_type(); 
+        let i64_type = self.context.i64_type();
+        let i32_type = self.context.i32_type();
         let void_type = self.context.void_type();
-        
+
         let instr_prof_name = "llvm.instrprof.increment";
 
         self.module.get_function(instr_prof_name).unwrap_or_else(|| {
@@ -423,8 +423,8 @@ impl<'ctx> Compiler<'ctx> {
 
     pub fn enable_jit_profiling(&mut self, func_names: Vec<String>) -> Result<(), String> {
         println!("   -> Profiling Abstraction: Initializing {} functions for adaptive JIT.", func_names.len());
-        
-        let i64_type = self.context.i64_type(); 
+
+        let i64_type = self.context.i64_type();
         let zero_i64 = i64_type.const_int(0, false);
 
         let zero_values: Vec<inkwell::values::IntValue> = std::iter::repeat(zero_i64)
@@ -434,9 +434,9 @@ impl<'ctx> Compiler<'ctx> {
         let zero_array_initializer = i64_type.const_array(zero_values.as_slice());
         let counter_array_type = i64_type.array_type(func_names.len() as u32);
         let counter_global = self.module.add_global(counter_array_type, None, "__quantica_profile_counters");
-        
-        counter_global.set_initializer(&zero_array_initializer.as_basic_value_enum()); 
-        
+
+        counter_global.set_initializer(&zero_array_initializer.as_basic_value_enum());
+
         Ok(())
     }
 
@@ -462,7 +462,7 @@ impl<'ctx> Compiler<'ctx> {
             %status = call i32 @quantica_gpu_launch(%kernel_ptr, i32 1, i32 1, i32 1)",
             kernel_name, kernel_size_bytes
         );
-        
+
         println!("   -> Final Stage: Generating Vulkan Compute Call Abstraction...");
 
         Ok(format!(
@@ -489,7 +489,7 @@ impl<'ctx> Compiler<'ctx> {
             }}",
             module_name
         );
-        
+
         Ok(format!("{}\n\n{}", graph_summary, hlo_ir_stub))
     }
 
@@ -499,26 +499,26 @@ impl<'ctx> Compiler<'ctx> {
 
         println!("   -> Running Tensor Fusion Analysis (Item #33)...");
         let fusion_report = self.analyze_and_fuse_tensors(name, body)?;
-        
+
         let gpu_context = Context::create();
         let gpu_module = gpu_context.create_module(name);
-        
+
         let kernel_fn_type = gpu_context.void_type().fn_type(&[], false);
         let kernel_function = gpu_module.add_function(name, kernel_fn_type, None);
-        
+
         let entry_block = gpu_context.append_basic_block(kernel_function, "entry");
         let gpu_builder = gpu_context.create_builder();
         gpu_builder.position_at_end(entry_block);
 
         gpu_builder.build_return(None).map_err(|e| e.to_string())?;
-        
+
         let raw_llvm_ir = gpu_module.print_to_string().to_string();
         let final_vulkan_output = self.emit_vulkan_compute_path(&raw_llvm_ir, name)?;
-        
+
         Ok(format!(
-            "{}\n\n{}\n\n// LLVM IR Output:\n{}\n\n{}", 
+            "{}\n\n{}\n\n// LLVM IR Output:\n{}\n\n{}",
             mlir_trace,
-            fusion_report, 
+            fusion_report,
             raw_llvm_ir,
             final_vulkan_output
         ))
@@ -538,14 +538,14 @@ impl<'ctx> Compiler<'ctx> {
             func_name,
             stages
         );
-        Ok(output) 
+        Ok(output)
     }
 
     pub fn compile_jit_program(&mut self, program: &ASTNode) -> Result<(), String> {
         if let ASTNode::Program(statements) = program {
             for stmt in statements {
                 if let ASTNode::FunctionDeclaration { name, parameters, return_type, body } = stmt {
-                   
+
                     self.compile_function(name, parameters, return_type, body)?;
                 } else {
                     return Err("(Codegen Error) JIT synthesis failed: Expected FunctionDeclaration.".to_string());
@@ -557,22 +557,22 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
-  
+
     pub fn compile_program(&mut self, program: &ASTNode) -> Result<(), String> {
         if let ASTNode::Program(statements) = program {
             for stmt in statements {
                 match stmt {
                     ASTNode::FunctionDeclaration { name, parameters, return_type, body } => {
-                        
+
                         self.compile_function(name, parameters, return_type, body)?;
                     }
-    
+
                     ASTNode::CircuitDeclaration { name, parameters, return_type: _, body } => {
-                        
+
                         println!("\n⚙️ Compiling GPU Kernel: {}", name);
                         let kernel_ir = self.compile_gpu_kernel(name, body)?;
                         println!("   -> Kernel IR Dump (Placeholder):\n{}", kernel_ir);
-                        
+
                         self.compile_function(name, parameters, &None, &ASTNode::Block(vec![]))?;
                     }
                     _ => {
@@ -606,24 +606,24 @@ impl<'ctx> Compiler<'ctx> {
         self.module.print_to_stderr();
     }
 
-    
+
     fn compile_statement(&mut self, node: &ASTNode, current_function: FunctionValue<'ctx>) -> Result<(), String> {
         match node {
             ASTNode::LetDeclaration { name, type_annotation, value, is_mutable } => {
                 self.compile_let_declaration(name, type_annotation, value, *is_mutable, current_function)?;
                 Ok(())
             }
-            ASTNode::If { 
-                condition, 
-                then_block, 
+            ASTNode::If {
+                condition,
+                then_block,
                 elif_blocks,
-                else_block 
+                else_block
             } => {
                 self.compile_if_statement(
-                    condition, 
+                    condition,
                     then_block,
-                    elif_blocks, 
-                    else_block, 
+                    elif_blocks,
+                    else_block,
                     current_function
                 )?;
                 Ok(())
@@ -645,11 +645,11 @@ impl<'ctx> Compiler<'ctx> {
                 self.compile_apply_statement(gate_expr, arguments, current_function)?;
                 Ok(())
             }
-            
+
             ASTNode::Return(value_node) => {
                 self.compile_return(value_node, current_function)
             }
-            
+
             ASTNode::Block(statements) => {
                 for stmt in statements {
                     self.compile_statement(stmt, current_function)?;
@@ -725,7 +725,7 @@ impl<'ctx> Compiler<'ctx> {
                 return Err("(Codegen Error) Quantum register size must be an integer.".to_string());
             }
             let size_i64 = compiled_size.into_int_value();
-            
+
             size_value = self.builder.build_int_truncate(size_i64, self.context.i32_type(), "size_i32")
                 .map_err(|e| e.to_string())?;
 
@@ -746,7 +746,7 @@ impl<'ctx> Compiler<'ctx> {
         let state_ptr_type = self.context.ptr_type(AddressSpace::default());
         let alloca = self.builder.build_alloca(state_ptr_type, name)
             .map_err(|e| e.to_string())?;
-            
+
         self.builder.build_store(alloca, state_ptr)
             .map_err(|e| e.to_string())?;
 
@@ -771,27 +771,27 @@ impl<'ctx> Compiler<'ctx> {
         };
         let alloca = self.builder.build_alloca(llvm_type, name).map_err(|e| e.to_string())?;
         let _ = self.builder.build_store(alloca, value);
-        
-        
+
+
         if let Some(di_scope) = self.get_current_di_scope(current_function) {
             let di_type = if let Some(quantica_type) = type_annotation {
                 self.get_or_create_di_type(quantica_type)
             } else {
-                
+
                 self.create_di_type_from_llvm(llvm_type)
             };
-            
+
             let di_local_var = self.debug_builder.create_auto_variable(
                 di_scope,
                 name,
                 self.compile_unit.get_file(),
-                1, 
+                1,
                 di_type,
-                true, 
+                true,
                 DIFlags::ZERO,
-                0, 
+                0,
             );
-            
+
             self.debug_builder.insert_declare_at_end(
                 alloca,
                 Some(di_local_var),
@@ -808,9 +808,9 @@ impl<'ctx> Compiler<'ctx> {
                 self.builder.get_insert_block().unwrap(),
             );
         }
-        
+
         self.variables.insert(name.to_string(), (alloca, llvm_type));
-        let _ = is_mutable; 
+        let _ = is_mutable;
         Ok(())
     }
 
@@ -842,7 +842,7 @@ impl<'ctx> Compiler<'ctx> {
                 0x06,
                 DIFlags::PUBLIC,
             ).unwrap().as_type();
-            
+
             self.debug_builder.create_pointer_type(
                 "ptr",
                 i8_type,
@@ -851,7 +851,7 @@ impl<'ctx> Compiler<'ctx> {
                 AddressSpace::default(),
             ).as_type()
         } else {
-           
+
             self.debug_builder.create_basic_type(
                 "unknown",
                 64,
@@ -865,7 +865,7 @@ impl<'ctx> Compiler<'ctx> {
         &mut self,
         condition_node: &ASTNode,
         then_node: &ASTNode,
-        elif_blocks: &Vec<(ASTNode, ASTNode)>, 
+        elif_blocks: &Vec<(ASTNode, ASTNode)>,
         else_node: &Option<Box<ASTNode>>,
         current_function: FunctionValue<'ctx>,
     ) -> Result<(), String> {
@@ -882,7 +882,7 @@ impl<'ctx> Compiler<'ctx> {
 
         self.builder.position_at_end(if_then_block);
         self.compile_statement(then_node, current_function)?;
-        let _=self.builder.build_unconditional_branch(merge_block); 
+        let _=self.builder.build_unconditional_branch(merge_block);
 
         let mut current_else_block = next_else_block;
 
@@ -899,7 +899,7 @@ impl<'ctx> Compiler<'ctx> {
 
             self.builder.position_at_end(elif_then_block);
             self.compile_statement(elif_body_node, current_function)?;
-            let _=self.builder.build_unconditional_branch(merge_block); 
+            let _=self.builder.build_unconditional_branch(merge_block);
 
             current_else_block = next_else_block;
         }
@@ -909,7 +909,7 @@ impl<'ctx> Compiler<'ctx> {
         if let Some(else_body) = else_node {
             self.compile_statement(else_body, current_function)?;
         }
-        
+
         let _=self.builder.build_unconditional_branch(merge_block);
 
         self.builder.position_at_end(merge_block);
@@ -935,7 +935,7 @@ impl<'ctx> Compiler<'ctx> {
         self.builder.position_at_end(loop_header);
         let condition_value = self.compile_expression(condition_node, current_function)?
             .into_int_value();
-        
+
         let _=self.builder.build_conditional_branch(
             condition_value,
             loop_body,
@@ -1022,7 +1022,7 @@ impl<'ctx> Compiler<'ctx> {
         Ok(call_site)
     }
 
-    
+
     fn compile_function(
         &mut self,
         name: &str,
@@ -1035,7 +1035,7 @@ impl<'ctx> Compiler<'ctx> {
             ASTNode::Block(stmts) => format!("Block with {} statements", stmts.len()),
             other => format!("NOT A BLOCK! Got: {:?}", format!("{:?}", other).chars().take(100).collect::<String>()),
         });
-        
+
         let mut param_types: Vec<BasicTypeEnum<'ctx>> = Vec::new();
         for p in params {
             param_types.push(self.map_type(&p.param_type));
@@ -1053,14 +1053,14 @@ impl<'ctx> Compiler<'ctx> {
         };
 
         let function = self.module.add_function(name, fn_return_type, None);
-        
-        
+
+
         let di_file = self.compile_unit.get_file();
         let line_no = 1;
-        
-        
+
+
         let mut di_param_types = vec![];
-        
+
         let di_return_type = match return_type_node {
             Some(Type::None) | None => {
                 self.debug_builder.create_basic_type(
@@ -1072,42 +1072,42 @@ impl<'ctx> Compiler<'ctx> {
             }
             Some(t) => self.get_or_create_di_type(t),
         };
-        
-      
+
+
         di_param_types.push(di_return_type);
-        
+
         for param in params {
             let di_type = self.get_or_create_di_type(&param.param_type);
             di_param_types.push(di_type);
         }
-        
+
         let di_subroutine_type = self.debug_builder.create_subroutine_type(
             di_file,
             Some(di_return_type),
             &di_param_types,
             DIFlags::ZERO,
         );
-        
+
         let di_function = self.debug_builder.create_function(
             di_file.as_debug_info_scope(),
             name,
-            Some(name), 
+            Some(name),
             di_file,
             line_no,
             di_subroutine_type,
-            true, 
-            true, 
+            true,
+            true,
             line_no,
             DIFlags::ZERO,
-            false, 
+            false,
         );
-        
+
         function.set_subprogram(di_function);
-        
+
         let entry_block = self.context.append_basic_block(function, "entry");
         self.builder.position_at_end(entry_block);
 
-        
+
         self.set_debug_location(line_no, 0, di_function.as_debug_info_scope());
 
         let attribute_name = if name.starts_with("_hot_") {
@@ -1121,13 +1121,13 @@ impl<'ctx> Compiler<'ctx> {
         if !attribute_name.is_empty() {
 
             let kind_id = inkwell::attributes::Attribute::get_named_enum_kind_id(attribute_name);
-            
+
             let attribute = self.context.create_enum_attribute(kind_id, 1);
             function.add_attribute(inkwell::attributes::AttributeLoc::Function, attribute);
         }
 
         let old_variables = self.variables.clone();
-        
+
         for (i, param) in function.get_param_iter().enumerate() {
             let ast_param = &params[i];
             let param_type = param_types[i];
@@ -1135,20 +1135,20 @@ impl<'ctx> Compiler<'ctx> {
             let alloca = self.builder.build_alloca(param_type, &ast_param.name)
                 .map_err(|e| e.to_string())?;
             let _ = self.builder.build_store(alloca, param);
-            
-            
+
+
             let di_param_type = self.get_or_create_di_type(&ast_param.param_type);
             let di_param_var = self.debug_builder.create_parameter_variable(
                 di_function.as_debug_info_scope(),
                 &ast_param.name,
-                (i + 1) as u32, 
+                (i + 1) as u32,
                 di_file,
                 line_no,
                 di_param_type,
-                true, 
+                true,
                 DIFlags::ZERO,
             );
-            
+
             self.debug_builder.insert_declare_at_end(
                 alloca,
                 Some(di_param_var),
@@ -1156,7 +1156,7 @@ impl<'ctx> Compiler<'ctx> {
                 self.current_debug_location.unwrap(),
                 entry_block,
             );
-            
+
             self.variables.insert(ast_param.name.clone(), (alloca, param_type));
         }
 
@@ -1174,10 +1174,10 @@ impl<'ctx> Compiler<'ctx> {
                 return Err(format!("(Codegen Error) Function '{}' has a non-void return type but does not end with a 'return' statement.", name));
             }
         }
-        
-       
+
+
         self.clear_debug_location();
-        
+
         self.variables = old_variables;
 
         if function.verify(true) {
@@ -1187,7 +1187,7 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
-   
+
     fn compile_block(&mut self, node: &ASTNode, current_function: FunctionValue<'ctx>) -> Result<(), String> {
         if let ASTNode::Block(statements) = node {
             for stmt in statements {
@@ -1199,7 +1199,7 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
-    
+
     fn compile_return(&mut self, value_node: &Option<Box<ASTNode>>, current_function: FunctionValue<'ctx>) -> Result<(), String> {
         if let Some(expr) = value_node {
             let value = self.compile_expression(expr, current_function)?;
@@ -1211,7 +1211,7 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     fn compile_expression(
-        &mut self, 
+        &mut self,
         node: &ASTNode,
         current_function: FunctionValue<'ctx>,
     ) -> Result<inkwell::values::BasicValueEnum<'ctx>, String> {
@@ -1271,11 +1271,11 @@ impl<'ctx> Compiler<'ctx> {
                                     left_val.into_vector_value(),
                                     right_val.into_vector_value(),
                                 )?;
-                                
+
                                 return Ok(result.as_basic_value_enum());
                             }
                             _ => return Err(format!(
-                                "(Codegen Error) Vector operation {:?} not supported for Tensors at {}", 
+                                "(Codegen Error) Vector operation {:?} not supported for Tensors at {}",
                                 operator, loc
                             )),
                         }
@@ -1351,7 +1351,7 @@ impl<'ctx> Compiler<'ctx> {
             }
             ASTNode::Unary { operator, operand } => {
                 let operand_val = self.compile_expression(operand, current_function)?;
-                
+
                 let result = match operator {
                     UnaryOperator::Not => {
                         let bool_type = self.context.bool_type();
@@ -1405,7 +1405,7 @@ impl<'ctx> Compiler<'ctx> {
         arguments: &Vec<ASTNode>,
         current_function: FunctionValue<'ctx>,
     ) -> Result<(), String> {
-        
+
         let (gate_name, param_ast_nodes, is_dagger, num_controls) =
             self.compile_gate_expression(gate_expr, current_function)?;
 
@@ -1439,10 +1439,10 @@ impl<'ctx> Compiler<'ctx> {
                     } else {
                         return Err(format!("(Codegen Error) Qubit argument must be a simple register access, found: {:?}", array));
                     };
-                    
+
                     let (current_var_alloca, current_var_type) = self.variables.get(array_name)
                         .ok_or_else(|| format!("(Codegen Error) Unknown quantum register '{}'", array_name))?;
-                    
+
                     if !current_var_type.is_pointer_type() {
                          return Err(format!("(Codegen Error) Variable '{}' is not a quantum register.", array_name));
                     }
@@ -1469,7 +1469,7 @@ impl<'ctx> Compiler<'ctx> {
                 _ => return Err("(Codegen Error) 'apply' arguments must be qubit accesses (e.g., q[0]).".to_string())
             }
         }
-        
+
         let state_ptr = match (register_alloca, register_type) {
             (Some(alloca), Some(ty)) => {
                 self.builder.build_load(ty, alloca, "load_state_ptr")
@@ -1492,7 +1492,7 @@ impl<'ctx> Compiler<'ctx> {
         let qubit_indices_ptr = self.build_i32_array(&qubit_indices)?;
 
         let num_qubits = self.context.i32_type().const_int(qubit_indices.len() as u64, false);
-        
+
         let num_controls_i32 = self.context.i32_type().const_int(num_controls as u64, false);
 
         let _ = self.builder.build_call(
@@ -1509,7 +1509,7 @@ impl<'ctx> Compiler<'ctx> {
             ],
             "call_apply",
         ).map_err(|e| e.to_string())?;
-        
+
         Ok(())
     }
 
@@ -1518,7 +1518,7 @@ impl<'ctx> Compiler<'ctx> {
         qubit_expr: &ASTNode,
         current_function: FunctionValue<'ctx>,
     ) -> Result<(inkwell::values::PointerValue<'ctx>, inkwell::values::IntValue<'ctx>), String> {
-        
+
         if let ASTNode::ArrayAccess { array, index, loc } = qubit_expr {
             let array_name = if let ASTNode::Identifier { name, .. } = &**array {
                 name
@@ -1528,7 +1528,7 @@ impl<'ctx> Compiler<'ctx> {
 
             let (var_ptr, var_type) = self.variables.get(array_name)
                 .ok_or_else(|| format!("(Codegen Error) Unknown quantum register '{}'", array_name))?;
-            
+
             let state_ptr = self.builder.build_load(*var_type, *var_ptr, "load_measure_ptr")
                 .map_err(|e| e.to_string())?
                 .into_pointer_value();
@@ -1554,7 +1554,7 @@ impl<'ctx> Compiler<'ctx> {
         gate_expr: &ASTNode,
         current_function: FunctionValue<'ctx>,
     ) -> Result<(String, Vec<ASTNode>, bool, i32), String> {
-        
+
         match gate_expr {
             ASTNode::Gate { name, .. } => {
                 let gate_name = name.clone();
@@ -1566,28 +1566,28 @@ impl<'ctx> Compiler<'ctx> {
 
             ASTNode::ParameterizedGate { name, parameters, .. } => {
                 let gate_name = name.clone();
-                let params = parameters.clone(); 
+                let params = parameters.clone();
                 let is_dagger = false;
                 let num_controls = 0;
                 Ok((gate_name, params, is_dagger, num_controls))
             }
 
             ASTNode::Dagger { gate_expr, .. } => {
-                let (gate_name, params, is_dagger, num_controls) = 
+                let (gate_name, params, is_dagger, num_controls) =
                     self.compile_gate_expression(gate_expr, current_function)?;
-                
+
                 Ok((gate_name, params, !is_dagger, num_controls))
             }
 
             ASTNode::Controlled { gate_expr, .. } => {
-                let (gate_name, params, is_dagger, num_controls) = 
+                let (gate_name, params, is_dagger, num_controls) =
                     self.compile_gate_expression(gate_expr, current_function)?;
-                
+
                 Ok((gate_name, params, is_dagger, num_controls + 1))
             }
 
             _ => Err(format!(
-                "(Codegen Error) This expression is not a valid gate: {:?}", 
+                "(Codegen Error) This expression is not a valid gate: {:?}",
                 gate_expr
             )),
         }
@@ -1605,11 +1605,11 @@ impl<'ctx> Compiler<'ctx> {
 
         for (i, &val) in values.iter().enumerate() {
             let index = self.context.i32_type().const_int(i as u64, false);
-            let elem_ptr = unsafe { 
+            let elem_ptr = unsafe {
                 self.builder.build_gep(
-                    f64_array_type, 
-                    array_alloca, 
-                    &[self.context.i32_type().const_int(0, false), index], 
+                    f64_array_type,
+                    array_alloca,
+                    &[self.context.i32_type().const_int(0, false), index],
                     "elem_ptr"
                 ).map_err(|e| e.to_string())?
             };
@@ -1618,7 +1618,7 @@ impl<'ctx> Compiler<'ctx> {
         }
 
         self.builder.build_pointer_cast(
-            array_alloca, 
+            array_alloca,
             self.context.ptr_type(AddressSpace::default()),
             "params_ptr"
         ).map_err(|e| e.to_string())
@@ -1630,17 +1630,17 @@ impl<'ctx> Compiler<'ctx> {
     ) -> Result<inkwell::values::PointerValue<'ctx>, String> {
         let i32_type = self.context.i32_type();
         let i32_array_type = i32_type.array_type(values.len() as u32);
-        
+
         let array_alloca = self.builder.build_alloca(i32_array_type, "indices_array")
             .map_err(|e| e.to_string())?;
 
         for (i, &val) in values.iter().enumerate() {
             let index = self.context.i32_type().const_int(i as u64, false);
-            let elem_ptr = unsafe { 
+            let elem_ptr = unsafe {
                 self.builder.build_gep(
-                    i32_array_type, 
-                    array_alloca, 
-                    &[self.context.i32_type().const_int(0, false), index], 
+                    i32_array_type,
+                    array_alloca,
+                    &[self.context.i32_type().const_int(0, false), index],
                     "elem_ptr"
                 ).map_err(|e| e.to_string())?
             };
@@ -1649,8 +1649,8 @@ impl<'ctx> Compiler<'ctx> {
         }
 
         self.builder.build_pointer_cast(
-            array_alloca, 
-            self.context.ptr_type(AddressSpace::default()), 
+            array_alloca,
+            self.context.ptr_type(AddressSpace::default()),
             "indices_ptr"
         ).map_err(|e| e.to_string())
     }
