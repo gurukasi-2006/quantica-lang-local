@@ -1,9 +1,9 @@
 # Quantica Programming Language
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Quantica CI](https://github.com/Quantica-Foundation/quantica-lang/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Quantica-Foundation/quantica-lang/actions/workflows/ci.yml)
 [![Rust](https://img.shields.io/badge/written%20in-Rust-orange)](https://www.rust-lang.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)]()
-[![Quantica CI](https://github.com/Quantica-Foundation/quantica-lang/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Quantica-Foundation/quantica-lang/actions/workflows/ci.yml)
 
 **Quantica** is a high-performance, compiled programming language designed for the next generation of computing: **Quantum-Classical Hybrid** workflows. Written in Rust and powered by LLVM, it features native quantum primitives, sparse state simulation, and a syntax built for scientists and engineers.
 
