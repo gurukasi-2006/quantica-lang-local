@@ -1,7 +1,7 @@
 # Quantica Programming Language
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
+[![Quantica CI](https://github.com/Quantica-Foundation/quantica-lang/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Quantica-Foundation/quantica-lang/actions/workflows/ci.yml)
 [![Rust](https://img.shields.io/badge/written%20in-Rust-orange)](https://www.rust-lang.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)]()
 
