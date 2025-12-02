@@ -48,3 +48,5 @@ Add this folder to your PATH or copy the binary to /usr/local/bin
 - Match expressions incomplete (use if/elif/else)
 - Try/finally not implemented (try/catch works)
 - JIT mode experimental (use interpreter or AOT)
+
+⭐ If you like this project, consider giving it a star!
