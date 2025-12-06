@@ -29,7 +29,7 @@ Most quantum languages are just Python libraries. Quantica is a **compiled langu
 For the easiest setup, download the pre-built installer from our latest release.
 
 1.  Go to the **[Releases Page](https://github.com/Quantica-Foundation/quantica-lang/releases)**.
-2.  Download **`QuanticaInstaller-v0.1.0-alphatest.exe`**.
+2.  Download **`QuanticaInstaller-v0.1.1-alpha.exe`**.
 3.  Run the installer to set up Quantica and add it to your system PATH automatically.
 
 ### Option 2: Build from Source
@@ -51,4 +51,6 @@ Add this folder to your PATH or copy the binary to /usr/local/bin
 - Try/finally not implemented (try/catch works)
 - JIT mode experimental (use interpreter or AOT)
 
-⭐ If you like this project, consider giving it a star!
+## ⭐ If you like this project, consider giving it a star!
+
+## ⚠️Hey everyone! Quantica is still experimental, so you may run into bugs, weird behaviors, missing features, or syntax that changes suddenly. We’re building fast, researching fast, and sometimes breaking things fast. Feel free to play with it, test ideas, and let us know what breaks — your feedback directly shapes the language! Just keep in mind that things may change quickly as the project evolves.
