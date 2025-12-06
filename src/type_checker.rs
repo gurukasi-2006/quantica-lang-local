@@ -5,15 +5,11 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::string::String;
-
-// --- ADD THESE IMPORTS ---
 use crate::lexer::Lexer;
 use crate::parser::ast::ImportPath;
 use crate::parser::ast::Loc;
 use crate::parser::Parser;
 use std::fs;
-// --- END ADDED IMPORTS ---
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeInfo {
     pub var_type: Type,
@@ -77,6 +73,17 @@ impl TypeChecker {
             "print".to_string(),
             immut(Type::Function(vec![], Box::new(none.clone()))),
         );
+        env_mut.set("input".to_string(), immut(
+            // It takes 1 argument (the prompt string) and returns a String
+            Type::Function(vec![Type::Any], Box::new(Type::String))
+        ));
+        env_mut.set("split".to_string(), immut(
+            // Func(String, String) -> Array<String>
+            Type::Function(
+                vec![Type::String, Type::String],
+                Box::new(Type::Array(Box::new(Type::String)))
+            )
+        ));
         env_mut.set(
             "debug_state".to_string(),
             immut(Type::Function(

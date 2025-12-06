@@ -19,6 +19,7 @@ use num_complex::Complex;
 type C64 = Complex<f64>;
 use crate::graphics::{Canvas, Color, Plot, PlotType};
 use std::sync::Mutex;
+use std::io::Write;
 lazy_static::lazy_static! {
     static ref INTERPRETER_CANVASES: Mutex<HashMap<i64, Canvas>> = Mutex::new(HashMap::new());
     static ref INTERPRETER_PLOTS: Mutex<HashMap<i64, Plot>> = Mutex::new(HashMap::new());
@@ -1612,6 +1613,8 @@ impl Evaluator {
 
                 match func_name.as_str() {
                     "print" => Self::builtin_print(evaluated_args),
+                    "input" => Self::builtin_input(evaluated_args),
+                    "split" => Self::builtin_split(evaluated_args),
                     "echo" => Self::builtin_echo(evaluated_args),
                     "maybe" => Self::builtin_maybe(evaluated_args),
                     "sample" => Self::builtin_sample(evaluated_args),
@@ -2022,6 +2025,49 @@ impl Evaluator {
             .collect();
         println!("{}", output.join(" "));
         Ok(RuntimeValue::None)
+    }
+    fn builtin_split(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
+        if args.len() != 2 {
+            return Err("Runtime Error: 'split' expects 2 arguments (string, delimiter).".to_string());
+        }
+
+        let target_str = match &args[0] {
+            RuntimeValue::String(s) => s,
+            _ => return Err("Runtime Error: First argument to split must be a String.".to_string())
+        };
+
+        let delim = match &args[1] {
+            RuntimeValue::String(s) => s,
+            _ => return Err("Runtime Error: Delimiter must be a String.".to_string())
+        };
+
+        // Split and convert to RuntimeValues
+        let elements: Vec<std::rc::Rc<std::cell::RefCell<RuntimeValue>>> = target_str
+            .split(delim)
+            .map(|s| {
+                // Trim whitespace (e.g. " 20 " -> "20")
+                let clean_str = s.trim().to_string();
+                std::rc::Rc::new(std::cell::RefCell::new(RuntimeValue::String(clean_str)))
+            })
+            .collect();
+
+        Ok(RuntimeValue::Register(elements))
+    }
+    fn builtin_input(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
+        // 1. Print the prompt if provided
+        if let Some(val) = args.get(0) {
+            print!("{}", val);
+            let _ = std::io::stdout().flush(); // Ensure prompt appears before typing
+        }
+
+        // 2. Read the line
+        let mut input_buffer = String::new();
+        std::io::stdin()
+            .read_line(&mut input_buffer)
+            .map_err(|e| format!("Runtime Error: Failed to read input. {}", e))?;
+
+        // 3. Return trimmed string (remove newline)
+        Ok(RuntimeValue::String(input_buffer.trim().to_string()))
     }
 
     fn builtin_to_int(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {

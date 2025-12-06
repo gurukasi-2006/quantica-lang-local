@@ -178,6 +178,8 @@ impl Environment {
             "print".to_string(),
             RuntimeValue::BuiltinFunction("print".to_string()),
         );
+        env.set("input".to_string(), RuntimeValue::BuiltinFunction("input".to_string()));
+        env.set("split".to_string(), RuntimeValue::BuiltinFunction("split".to_string()));
         env.set(
             "echo".to_string(),
             RuntimeValue::BuiltinFunction("echo".to_string()),
