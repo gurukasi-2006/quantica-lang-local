@@ -1,22 +1,25 @@
 // src/environment/mod.rs
+use crate::parser::ast::Parameter;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::cell::RefCell;
-use crate::parser::ast::Parameter;
+use crate::parser::ast::ClassMethod;
+use crate::parser::ast::ClassField;
+use crate::parser::ast::ASTNode;
 
 #[derive(Debug, Clone)]
 pub struct GateDefinition {
-    
+    // The base gate name, e.g., "x", "u", "cnot"
     pub name: String,
-   
+    // The parameters, e.g., [theta, phi, lambda] for U gate
     pub params: Vec<f64>,
-    
+    // The list of control qubit indices
     pub controls: Vec<usize>,
-   
+    // The list of target qubit indices
     pub targets: Vec<usize>,
-   
+    // The total number of qubits in the register
     pub register_size: usize,
-   
+    // A shared pointer to the state vector
     pub state_rc: Rc<RefCell<HashMap<usize, (f64, f64)>>>,
 }
 
@@ -27,49 +30,65 @@ pub enum RuntimeValue {
     String(String),
     Bool(bool),
     None,
-    
+
+    // A handle to a specific qubit within a register
+    // It holds a shared pointer to the register's state vector
     Qubit {
-        
-        state: Rc<RefCell<HashMap<usize, (f64, f64)>>>, 
-        index: usize,
-        size: usize,
-    },
-    
-   
-    QuantumRegister {
-        size: usize,
-        
-        state: Rc<RefCell<HashMap<usize, (f64, f64)>>>, 
-    },
-    
-    Gate {
-       
-        base_name: String,
-        is_dagger: bool,
-       
-        num_controls: usize,
+        // A shared pointer to the register's SPARSE state
+        state: Rc<RefCell<HashMap<usize, (f64, f64)>>>,
+        index: usize, // This qubit's index
+        size: usize,  // The total size of its register
     },
 
-    Register(Vec<Rc<RefCell<RuntimeValue>>>),
+    // --- THIS IS THE UPDATED REGISTER DEFINITION ---
+    QuantumRegister {
+        size: usize,
+        // The state is now a HashMap from basis state (usize) to amplitude
+        state: Rc<RefCell<HashMap<usize, (f64, f64)>>>,
+    },
+
+    Gate {
+        // "s", "x", "u", etc.
+        base_name: String,
+        is_dagger: bool,
+        // Number of controls this expression has added
+        num_controls: usize,
+    },
+    Class {
+        name: String,
+        superclass: Option<String>,
+        fields: Vec<ClassField>,
+        methods: HashMap<String, ClassMethod>,
+        constructor: Option<Box<ASTNode>>,
+    },
+
+    // Object instance
+    Instance {
+        class_name: String,
+        fields: HashMap<String, Rc<RefCell<RuntimeValue>>>,
+        methods: HashMap<String, ClassMethod>,
+    },
+
+    Register(Vec<Rc<RefCell<RuntimeValue>>>), // An array
     Dict(HashMap<String, Rc<RefCell<RuntimeValue>>>),
     Range(Vec<i64>),
     KetState(String),
-    
-    
+
+    // A user-defined function
     Function {
         parameters: Vec<Parameter>,
         body: Box<crate::parser::ast::ASTNode>,
         env: Rc<RefCell<Environment>>,
     },
-    
-   
+
+    // A built-in Rust function
     BuiltinFunction(String),
     Module(Rc<RefCell<Environment>>),
-    
+
     ReturnValue(Box<RuntimeValue>),
     Break,
     Continue,
-    
+
     Probabilistic {
         value: Box<RuntimeValue>,
         confidence: f64,
@@ -77,7 +96,6 @@ pub enum RuntimeValue {
 }
 
 impl RuntimeValue {
-
     pub fn type_name(&self) -> &str {
         match self {
             RuntimeValue::Int(_) => "int",
@@ -86,6 +104,8 @@ impl RuntimeValue {
             RuntimeValue::Bool(_) => "bool",
             RuntimeValue::None => "none",
             RuntimeValue::Qubit { .. } => "qubit",
+            RuntimeValue::Class { name, .. } => "class",
+            RuntimeValue::Instance { class_name, .. } => "instance",
             RuntimeValue::Gate { .. } => "gate",
             RuntimeValue::QuantumRegister { .. } => "quantum_register",
             RuntimeValue::Register(_) => "array",
@@ -103,7 +123,6 @@ impl RuntimeValue {
     }
 }
 
-
 impl std::fmt::Display for RuntimeValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -112,28 +131,35 @@ impl std::fmt::Display for RuntimeValue {
             RuntimeValue::String(s) => write!(f, "{}", s),
             RuntimeValue::Bool(b) => write!(f, "{}", b),
             RuntimeValue::None => write!(f, "None"),
-            
+
             RuntimeValue::Qubit { index, size, .. } => {
                 write!(f, "<Qubit {} of {}>", index, size)
             }
-           
+
             RuntimeValue::QuantumRegister { size, .. } => {
                 write!(f, "<QuantumRegister (size={})>", size)
             }
             RuntimeValue::Register(elements) => {
-                let parts: Vec<String> = elements.iter().map(|el| el.borrow().to_string()).collect();
+                let parts: Vec<String> =
+                    elements.iter().map(|el| el.borrow().to_string()).collect();
                 write!(f, "[{}]", parts.join(", "))
             }
             RuntimeValue::Dict(map) => {
-                let parts: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", k, v.borrow())).collect();
+                let parts: Vec<String> = map
+                    .iter()
+                    .map(|(k, v)| format!("{}: {}", k, v.borrow()))
+                    .collect();
                 write!(f, "{{{}}}", parts.join(", "))
             }
             RuntimeValue::Module(_) => write!(f, "<Module>"),
-            _ => write!(f, "{:?}", self), 
+            RuntimeValue::Class { name, .. } => write!(f, "<class '{}'>", name),
+            RuntimeValue::Instance { class_name, fields, .. } => {
+                write!(f, "<{} instance at {:p}>", class_name, fields)
+            }
+            _ => write!(f, "{:?}", self), // Fallback
         }
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct Environment {
@@ -147,18 +173,51 @@ impl Environment {
             store: HashMap::new(),
             outer: None,
         };
-        
-        env.set("print".to_string(), RuntimeValue::BuiltinFunction("print".to_string()));
-        env.set("echo".to_string(), RuntimeValue::BuiltinFunction("echo".to_string()));
-        env.set("maybe".to_string(), RuntimeValue::BuiltinFunction("maybe".to_string()));
-        env.set("type_of".to_string(), RuntimeValue::BuiltinFunction("type_of".to_string()));
-        env.set("to_string".to_string(), RuntimeValue::BuiltinFunction("to_string".to_string()));
-        env.set("sample".to_string(), RuntimeValue::BuiltinFunction("sample".to_string()));
-        env.set("to_int".to_string(), RuntimeValue::BuiltinFunction("to_int".to_string()));
-        env.set("to_float".to_string(), RuntimeValue::BuiltinFunction("to_float".to_string()));
-        env.set("len".to_string(), RuntimeValue::BuiltinFunction("len".to_string()));
-        env.set("debug_state".to_string(), RuntimeValue::BuiltinFunction("debug_state".to_string()));
-        env.set("assert".to_string(), RuntimeValue::BuiltinFunction("assert".to_string()));
+
+        env.set(
+            "print".to_string(),
+            RuntimeValue::BuiltinFunction("print".to_string()),
+        );
+        env.set(
+            "echo".to_string(),
+            RuntimeValue::BuiltinFunction("echo".to_string()),
+        );
+        env.set(
+            "maybe".to_string(),
+            RuntimeValue::BuiltinFunction("maybe".to_string()),
+        );
+        env.set(
+            "type_of".to_string(),
+            RuntimeValue::BuiltinFunction("type_of".to_string()),
+        );
+        env.set(
+            "to_string".to_string(),
+            RuntimeValue::BuiltinFunction("to_string".to_string()),
+        );
+        env.set(
+            "sample".to_string(),
+            RuntimeValue::BuiltinFunction("sample".to_string()),
+        );
+        env.set(
+            "to_int".to_string(),
+            RuntimeValue::BuiltinFunction("to_int".to_string()),
+        );
+        env.set(
+            "to_float".to_string(),
+            RuntimeValue::BuiltinFunction("to_float".to_string()),
+        );
+        env.set(
+            "len".to_string(),
+            RuntimeValue::BuiltinFunction("len".to_string()),
+        );
+        env.set(
+            "debug_state".to_string(),
+            RuntimeValue::BuiltinFunction("debug_state".to_string()),
+        );
+        env.set(
+            "assert".to_string(),
+            RuntimeValue::BuiltinFunction("assert".to_string()),
+        );
         env
     }
 
@@ -182,11 +241,11 @@ impl Environment {
     pub fn set(&mut self, name: String, value: RuntimeValue) {
         self.store.insert(name, Rc::new(RefCell::new(value)));
     }
-    
+
     pub fn get_store_clone(&self) -> HashMap<String, Rc<RefCell<RuntimeValue>>> {
         self.store.clone()
     }
-    
+
     pub fn get_quantum_state(&self) -> Option<RuntimeValue> {
         for (_, value_rc) in self.store.iter() {
             let value = value_rc.borrow();
@@ -194,12 +253,11 @@ impl Environment {
                 return Some(value.clone());
             }
         }
-        
+
         if let Some(outer) = &self.outer {
             return outer.borrow().get_quantum_state();
         }
-        
+
         None
     }
-
 }

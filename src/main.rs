@@ -1,59 +1,61 @@
 // src/main.rs
-mod lexer;
-mod parser;
+mod codegen;
+mod doc_generator;
 mod environment;
 mod evaluator;
-mod type_checker;
-mod doc_generator;
-mod codegen;
+mod lexer;
 mod linker;
+mod parser;
 mod runtime;
+mod type_checker;
+mod error;
 
-mod quantum_backend;
 mod hardware_integration;
-
-use hardware_integration::{HardwareExecutor, parse_hardware_config};
+mod quantum_backend;
+mod graphics;
+mod graphics_runtime;
+use hardware_integration::{parse_hardware_config, HardwareExecutor};
 use quantum_backend::QuantumConfig;
 
-use std::time::Instant;
+use crate::codegen::Compiler;
+use crate::doc_generator::DocGenerator;
 use crate::environment::Environment;
+use crate::environment::RuntimeValue;
 use crate::evaluator::Evaluator;
+use crate::lexer::token::Token;
+use crate::linker::Linker;
+use crate::parser::ast::ASTNode;
 use crate::type_checker::TypeChecker;
 use crate::type_checker::TypeEnvironment;
+use inkwell::context::Context;
+use inkwell::OptimizationLevel;
 use lexer::Lexer;
+use parser::ast::ImportPath;
+use parser::ast::ImportSpec;
 use parser::Parser;
 use std::env;
 use std::fs;
-use std::path::Path; 
-use parser::ast::ImportSpec;
-use parser::ast::ImportPath;
 use std::io::{self, Write};
-use crate::parser::ast::ASTNode;
-use crate::environment::RuntimeValue;
-use crate::doc_generator::DocGenerator;
-use crate::lexer::token::Token;
-use inkwell::context::Context;
-use crate::codegen::Compiler;
-use crate::linker::Linker;
-use inkwell::OptimizationLevel;
+use std::path::Path;
+use std::time::Instant;
+use crate::error::{ErrorReporter, Diagnostic};
+use crate::parser::ast::Loc;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum CompilationTarget {
-    HostCPU,  // Default (LLVM/X86)
-    SPIRV,    // Vulkan/OpenCL GPU
-    XLA,      // TPU/Specialized Accelerator
+    HostCPU, // Default (LLVM/X86)
+    SPIRV,   // Vulkan/OpenCL GPU
+    XLA,     // TPU/Specialized Accelerator
 }
-
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Quantica Compiler v0.1 ===\n");
-    
+
     let args: Vec<String> = env::args().collect();
 
     let mut show_ast = false;
     let mut show_tokens = false;
-    let mut verbose=false;
-    let mut filename: Option<&str> = None;
+    let mut verbose = false;
     let mut emit_llvm = false;
     let mut command: Option<&str> = None;
     let mut opt_level = OptimizationLevel::Default;
@@ -62,36 +64,50 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut hardware_config: Option<QuantumConfig> = None;
     let mut list_devices = false;
 
+    // FIRST: Check for hardware mode and parse config
+    if args.contains(&"--hardware".to_string()) {
+        hardware_config = parse_hardware_config(&args);
+    }
 
+    // THEN: Parse other flags
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
             "--hardware" => {
-                hardware_config = parse_hardware_config(&args[i..]);
-                // Skip to after hardware arguments
+                // Skip --hardware and its value (already parsed)
+                i += 2;
+            }
+            "--device" | "--shots" | "--api-token" => {
+                // Skip hardware-specific flags and their values
+                i += 2;
+            }
+            "--no-optimize" => {
                 i += 1;
-                while i < args.len() && (args[i] == "ibm" || args[i] == "google" || 
-                                        args[i] == "aws" || args[i] == "ionq" ||
-                                        args[i].starts_with("--device") || 
-                                        args[i].starts_with("--shots") ||
-                                        args[i].starts_with("--api-token")) {
-                    i += 1;
-                    if i > 0 && (args[i-1].starts_with("--device") || 
-                                args[i-1].starts_with("--shots") || 
-                                args[i-1].starts_with("--api-token")) {
-                        i += 1; // skip the value after the flag
-                    }
-                }
             }
             "--list-devices" => {
                 list_devices = true;
                 i += 1;
             }
-            "--ast" => { show_ast = true; i += 1; }
-            "--tokens" => { show_tokens = true; i += 1; }
-            "--v" => { verbose = true; i += 1; }
-            "--emit-llvm" => { emit_llvm = true; i += 1; }
-            "--lto" => { enable_lto = true; i += 1; }
+            "--ast" => {
+                show_ast = true;
+                i += 1;
+            }
+            "--tokens" => {
+                show_tokens = true;
+                i += 1;
+            }
+            "--v" => {
+                verbose = true;
+                i += 1;
+            }
+            "--emit-llvm" => {
+                emit_llvm = true;
+                i += 1;
+            }
+            "--lto" => {
+                enable_lto = true;
+                i += 1;
+            }
             _ if args[i].starts_with("--target=") => {
                 let parts: Vec<&str> = args[i].split('=').collect();
                 if parts.len() == 2 {
@@ -108,18 +124,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 opt_level = parse_opt_level(&args[i])?;
                 i += 1;
             }
-            _ if args[i] == "--doc" || args[i] == "--repl" || args[i] == "--test" || 
-                args[i] == "--lex" || args[i] == "--compile" || args[i] == "--run" => {
+            _ if args[i] == "--doc"
+                || args[i] == "--repl"
+                || args[i] == "--test"
+                || args[i] == "--lex"
+                || args[i] == "--compile"
+                || args[i] == "--run" =>
+            {
                 command = Some(&args[i]);
                 i += 1;
             }
-            _ if !args[i].starts_with("--") && filename.is_none() => {
-                filename = Some(&args[i]);
+            _ => {
+                // Skip other args for now
                 i += 1;
             }
-            _ => i += 1,
         }
     }
+
+    // FINALLY: Extract filename using the helper function
+    let filename = hardware_integration::extract_filename(&args);
 
     if list_devices {
         if let Some(config) = hardware_config {
@@ -140,45 +163,50 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Handle hardware execution mode
     if let Some(config) = hardware_config {
         if let Some(file) = filename {
-            return run_on_hardware(file, config);
+            println!("🚀 Executing on Quantum Hardware: {:?}\n", config.provider);
+            println!("📄 File: {}", file);
+            println!("🎯 Device: {}", config.device_name.as_ref().unwrap_or(&"default".to_string()));
+            println!("🎲 Shots: {}\n", config.shots);
+            return run_on_hardware(&file, config);
         } else {
             eprintln!("Error: No input file specified for hardware execution");
+            eprintln!("Usage: quantica --hardware native <filename.qc>");
             std::process::exit(1);
         }
     }
 
+    // ... rest of your main() function continues as before ...
 
     if command.is_none() && filename.is_none() {
         println!("Starting REPL mode (type '.quit' to exit, '.clear' to reset).");
         run_repl();
         return Ok(());
     }
-    
-   
+
     if args.len() < 2 {
         println!("Starting REPL mode (type '.quit' to exit, '.clear' to reset).");
-        run_repl(); // Run REPL if no file is given
+        run_repl();
         return Ok(());
     }
 
-    if args[1] == "--version" {
+    if args.len() >= 2 && args[1] == "--version" {
         println!("Quantica v0.1.0");
         println!("Quantica By Quantica Foundation");
         return Ok(());
     }
 
-    if args[1] == "--help" || args[1] == "-h" {
+    if args.len() >= 2 && (args[1] == "--help" || args[1] == "-h") {
         print_help();
         return Ok(());
     }
 
-    if args[1] == "--doc" && args.len() >= 3 {
-        let filename = &args[2];
-        let output_file = "docs/api.md"; 
-        println!("📄 Generating documentation for: {}", filename);
+    if args.len() >= 2 && args[1] == "--doc" && args.len() >= 3 {
+        let fname = &args[2];
+        let output_file = "docs/api.md";
+        println!("📄 Generating documentation for: {}", fname);
         println!("   Outputting to: {}", output_file);
-        
-        match run_doc_generator(filename, output_file) {
+
+        match run_doc_generator(fname, output_file) {
             Ok(()) => {
                 println!("✓ Documentation generated successfully!");
             }
@@ -189,51 +217,55 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         return Ok(());
     }
-    
-    if args[1] == "--repl" {
+
+    if args.len() >= 2 && args[1] == "--repl" {
         println!("Starting REPL mode (type '.quit' to exit, '.clear' to reset).");
         run_repl();
         return Ok(());
     }
 
-    if args[1] == "--test" {
+    if args.len() >= 2 && args[1] == "--test" {
         run_test_suite();
         return Ok(());
     }
-    
-    
-    if args[1] == "--lex" && args.len() >= 3 {
+
+    if args.len() >= 2 && args[1] == "--lex" && args.len() >= 3 {
         run_lexer_only(&args[2]);
         return Ok(());
     }
 
-    if args[1] == "--compile" && args.len() >= 3 {
-        let filename = &args[2];
+    if args.len() >= 2 && args[1] == "--compile" && args.len() >= 3 {
+        let fname = &args[2];
         let object_file = "output.o";
-        
-        // Determine output executable name from source file
-        let exe_name = Path::new(filename)
+
+        let exe_name = Path::new(fname)
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("program");
-        
+
         let output_exe = if cfg!(target_os = "windows") {
             format!("{}.exe", exe_name)
         } else {
             exe_name.to_string()
         };
-        
-        println!("🚀 Compiling to executable: {} -> {}", filename, output_exe);
-        
-        match compile_file_llvm(filename, object_file,emit_llvm,opt_level,enable_lto,target) {
+
+        println!("🚀 Compiling to executable: {} -> {}", fname, output_exe);
+
+        match compile_file_llvm(
+            fname,
+            object_file,
+            emit_llvm,
+            opt_level,
+            enable_lto,
+            target,
+        ) {
             Ok(()) => {
                 println!("✓ LLVM compilation successful!\n");
-                
-                
-                let runtime_lib_dir = "target/debug";
-                match Linker::link_executable(object_file, &output_exe, runtime_lib_dir,enable_lto) {
-                    Ok(()) => {
 
+                let runtime_lib_dir = "target/debug";
+                match Linker::link_executable(object_file, &output_exe, runtime_lib_dir, enable_lto)
+                {
+                    Ok(()) => {
                         fs::remove_file(object_file)
                             .map_err(|e| format!("Failed to clean up object file: {}", e))?;
                         println!("\n🎉 Build successful!");
@@ -241,9 +273,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     Err(e) => {
                         eprintln!("\n✗ Linking failed: {}", e);
-                        eprintln!("\nℹ️  You can try manual linking:");
-                        eprintln!("   1. Open 'x64 Native Tools Command Prompt for VS'");
-                        eprintln!("   2. Run: link {} target\\debug\\quantica.lib /OUT:{} /SUBSYSTEM:CONSOLE kernel32.lib msvcrt.lib", object_file, output_exe);
                         fs::remove_file(object_file).unwrap_or_default();
                         std::process::exit(1);
                     }
@@ -257,11 +286,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-
-    if args[1] == "--run" && args.len() >= 3 {
-        let filename = &args[2];
-        println!("🚀 Running JIT Compiler: {}", filename);
-        match run_jit_file(filename,emit_llvm,opt_level,target) {
+    if args.len() >= 2 && args[1] == "--run" && args.len() >= 3 {
+        let fname = &args[2];
+        println!("🚀 Running JIT Compiler: {}", fname);
+        match run_jit_file(fname, emit_llvm, opt_level, target) {
             Ok(()) => {
                 println!("\n✓ JIT execution successful!");
             }
@@ -272,31 +300,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         return Ok(());
     }
-    
+
     // Full compilation pipeline: Lex + Parse
     if let Some(file) = filename {
-        compile_file(file, show_ast, show_tokens, verbose);
+        compile_file(&file, show_ast, show_tokens, verbose);
     } else {
         eprintln!("Error: No input file specified");
         eprintln!("Usage: quantica [options] <file.qc>");
-        eprintln!("Options:");
-        eprintln!("  -v, --verbose    Show compilation phases");
-        eprintln!("  --ast            Show Abstract Syntax Tree");
-        eprintln!("  --tokens         Show token stream");
-        eprintln!("  --emit-llvm  Emit LLVM IR");
-        eprintln!("  --compile    Compile to executable");
-        eprintln!("  --run        JIT compile and run");
-        eprintln!("  --doc        Generate documentation");
-        eprintln!("  --repl       Start interactive REPL");
-        eprintln!("  --test       Run test suite");
+        eprintln!("\nTry: quantica --help");
         std::process::exit(1);
     }
 
     Ok(())
 }
 
-fn compile_file(filename: &str,show_ast: bool, show_tokens: bool,verbose:bool) {
-    
+fn compile_file(filename: &str, show_ast: bool, show_tokens: bool, verbose: bool) {
     if verbose {
         println!("📄 Compiling: {}\n", filename);
     }
@@ -315,7 +333,7 @@ fn compile_file(filename: &str,show_ast: bool, show_tokens: bool,verbose:bool) {
         println!("{:-<60}\n", "");
     }
     // Lexical Analysis
-    if verbose{
+    if verbose {
         println!("🔤 Phase 1: Lexical Analysis");
     }
     let mut lexer = Lexer::new(&source);
@@ -341,57 +359,80 @@ fn compile_file(filename: &str,show_ast: bool, show_tokens: bool,verbose:bool) {
         }
         println!("==============\n");
     }
-    
+
     // Syntax Analysis (Parsing)
-    if verbose{
+    if verbose {
         println!("🌳 Phase 2: Syntax Analysis");
     }
     let mut parser = Parser::new(tokens);
+    let reporter = ErrorReporter::new(&source, filename);
     let ast = match parser.parse() {
         Ok(tree) => {
             if verbose {
                 println!("✓ Parser succeeded!\n");
-            }    
+            }
             tree
         }
         Err(e) => {
-            eprintln!("✗ Parser error: {}", e);
+            let loc = parse_error_location(&e).unwrap_or(
+                // Fallback to 1:1 if parsing fails
+                Loc { line: 1, column: 1 }
+            );
+
+            let diag = Diagnostic::error(loc, &e)
+                .with_code("E001")
+                .with_hint("Check for missing semicolons, parentheses, or braces.");
+
+            reporter.report(&diag);
             std::process::exit(1);
         }
     };
-    if verbose{
+    if verbose {
         println!("🔬 Phase 2.5: Type Checking");
     }
     match TypeChecker::check_program(&ast) {
         Ok(()) => {
-            if verbose{
+            if verbose {
                 println!("✓ Type check succeeded!\n");
             }
         }
         Err(e) => {
-            eprintln!("✗ Type error: {}", e);
+            let loc = parse_error_location(&e).unwrap_or(
+                crate::parser::ast::Loc { line: 1, column: 1 }
+            );
+
+            // 2. Clean the message (Remove the "Type Error at..." prefix)
+            let clean_msg = if let Some(idx) = e.find("]: ") {
+                &e[idx + 3..] // Skip past "]: "
+            } else {
+                &e
+            };
+
+            let diag = Diagnostic::error(loc, clean_msg)
+                .with_code("E002")
+                .with_hint("Check your variable declarations and types.");
+
+            reporter.report(&diag);
             std::process::exit(1);
         }
     }
-    
+
     // Display AST (Optional, but good for debugging)
-    
+
     if show_ast {
         println!("=== ABSTRACT SYNTAX TREE ===");
         print_ast(&ast, 0);
         println!("============================\n");
     }
-    
-    
-    
+
     //INTERPRETATION (EVALUATION)
-    if verbose{
+    if verbose {
         println!("✨ Phase 3: Interpretation");
     }
     // Wrap the root environment in Rc<RefCell<>>
     let env = std::rc::Rc::new(std::cell::RefCell::new(Environment::new()));
 
-    if verbose{
+    if verbose {
         println!("Program Output:");
         println!("{:-<60}", "");
     }
@@ -399,16 +440,34 @@ fn compile_file(filename: &str,show_ast: bool, show_tokens: bool,verbose:bool) {
     let start_time = Instant::now();
     let evaluation_result = Evaluator::evaluate_program(&ast, &env);
     let duration = start_time.elapsed();
-    
+
     println!("{:-<60}", "");
-    println!("⏱️  Interpreter Time: {:.6} seconds", duration.as_secs_f64());
-    
+    println!(
+        "⏱️  Interpreter Time: {:.6} seconds",
+        duration.as_secs_f64()
+    );
+
     match evaluation_result {
         Ok(_) => {
             println!("✓ Execution successful!");
         }
         Err(e) => {
-            eprintln!("✗ Runtime Error: {}", e);
+            let loc = parse_error_location(&e).unwrap_or(
+                crate::parser::ast::Loc { line: 1, column: 1 }
+            );
+
+            // 2. Clean the message
+            let clean_msg = if let Some(idx) = e.find("]: ") {
+                &e[idx + 3..]
+            } else {
+                &e
+            };
+
+            let diag = Diagnostic::error(loc, clean_msg)
+                .with_code("E003") // Runtime/Panic Error
+                .with_hint("This error happened while the code was running.");
+
+            reporter.report(&diag);
             std::process::exit(1);
         }
     }
@@ -421,7 +480,7 @@ fn print_help() {
     println!("    quantica [OPTIONS] <file.qc>");
     println!();
     println!("OPTIONS:");
-    println!("    --version,        Show version information");
+    println!("    --version            Show version information");
     println!("    --help, -h           Show this help message");
     println!("    --compile <file>     Compile to native executable");
     println!("    --run <file>         JIT compile and run");
@@ -439,21 +498,67 @@ fn print_help() {
     println!("    --target=<target>    Compilation target (host, spirv, xla)");
     println!();
     println!("QUANTUM HARDWARE OPTIONS:");
-    println!("    --hardware <provider>    Run on quantum hardware (ibm, aws, ionq)");
+    println!("    --hardware <provider>    Run on quantum hardware/simulator");
+    println!("                             Providers:");
+    println!("                             - native   : Native Rust simulator (default, fast, no deps)");
+    println!("                             - ibm      : IBM Quantum (requires Python + qiskit)");
+    println!("                             - google   : Google Cirq (requires Python + cirq)");
+    println!("                             - aws      : AWS Braket");
+    println!("                             - ionq     : IonQ");
     println!("    --device <name>          Specify device name");
     println!("    --shots <number>         Number of measurements (default: 1024)");
     println!("    --api-token <token>      API authentication token");
     println!("    --list-devices           List available quantum devices");
+    println!("    --no-optimize            Disable circuit optimization");
     println!();
     println!("EXAMPLES:");
-    println!("    quantica hello.qc             # Run a Quantica program");
-    println!("    quantica --compile app.qc     # Compile to executable");
-    println!("    quantica --repl               # Start REPL");
-    println!("    quantica --doc lib.qc         # Generate documentation");
-    println!("    quantica --hardware ibm --device ibmq_lima bell.qc   # Run on IBM");
-    println!("    quantica --hardware ibm --list-devices               # List devices");
+    println!("    # Run a Quantica program (interpreted)");
+    println!("    quantica hello.qc");
+    println!();
+    println!("    # Compile to executable");
+    println!("    quantica --compile app.qc");
+    println!();
+    println!("    # JIT compile and run with optimizations");
+    println!("    quantica --run -O3 program.qc");
+    println!();
+    println!("    # Start REPL");
+    println!("    quantica --repl");
+    println!();
+    println!("    # Generate documentation");
+    println!("    quantica --doc lib.qc");
+    println!();
+    println!("    # === QUANTUM SIMULATION EXAMPLES ===");
+    println!();
+    println!("    # Use native Rust simulator (recommended - fast and no dependencies!)");
+    println!("    quantica --hardware native bell.qc");
+    println!();
+    println!("    # Native simulator with 10,000 shots");
+    println!("    quantica --hardware native --shots 10000 grover.qc");
+    println!();
+    println!("    # Use IBM Qiskit backend (requires Python)");
+    println!("    quantica --hardware ibm --device ibmq_lima bell.qc");
+    println!();
+    println!("    # Use Google Cirq backend (requires Python)");
+    println!("    quantica --hardware google bell.qc");
+    println!();
+    println!("    # List available devices for a provider");
+    println!("    quantica --hardware native --list-devices");
+    println!();
+    println!("BACKEND COMPARISON:");
+    println!("    Native:  ✅ Fast, no dependencies, works offline");
+    println!("    Qiskit:  ✅ Real IBM hardware, ❌ requires Python");
+    println!("    Cirq:    ✅ Google integration, ❌ requires Python");
+    println!();
+    println!("For more information, visit: https://github.com/Quantica-Foundation/quantica-lang.git");
 }
-fn compile_file_llvm(filename: &str, output_file: &str, emit_llvm: bool, opt_level: OptimizationLevel,enable_lto: bool,target: CompilationTarget) -> Result<(), String> {
+fn compile_file_llvm(
+    filename: &str,
+    output_file: &str,
+    emit_llvm: bool,
+    opt_level: OptimizationLevel,
+    enable_lto: bool,
+    target: CompilationTarget,
+) -> Result<(), String> {
     println!("📄 Compiling: {}\n", filename);
 
     // Read source
@@ -463,26 +568,24 @@ fn compile_file_llvm(filename: &str, output_file: &str, emit_llvm: bool, opt_lev
     // Lexical Analysis
     println!("🔤 Phase 1: Lexical Analysis");
     let mut lexer = Lexer::new(&source);
-    let tokens = lexer.tokenize()
+    let tokens = lexer
+        .tokenize()
         .map_err(|e| format!("Lexer error: {}", e))?;
-    
+
     //Syntax Analysis (Parsing)
     println!("🌳 Phase 2: Syntax Analysis");
     let mut parser = Parser::new(tokens);
-    let ast = parser.parse()
-        .map_err(|e| format!("Parser error: {}", e))?;
+    let ast = parser.parse().map_err(|e| format!("Parser error: {}", e))?;
 
     //Type Checking
     println!("🔬 Phase 3: Type Checking");
-    TypeChecker::check_program(&ast)
-        .map_err(|e| format!("Type error: {}", e))?;
+    TypeChecker::check_program(&ast).map_err(|e| format!("Type error: {}", e))?;
     println!("✓ Type check succeeded!\n");
-
 
     //Initialize LLVM
     println!("🤖 Phase 4: Code Generation (LLVM)");
     let context = Context::create();
-    let mut compiler = Compiler::new(&context,opt_level);
+    let mut compiler = Compiler::new(&context, opt_level);
 
     //Compile Program
     compiler.compile_program(&ast)?;
@@ -495,20 +598,21 @@ fn compile_file_llvm(filename: &str, output_file: &str, emit_llvm: bool, opt_lev
     compiler.finalize_debug_info();
     println!("   -> Finalized debug info");
 
-    let module_name = Path::new(filename).file_stem().and_then(|s| s.to_str()).unwrap_or("quantica_program");
-    
+    let module_name = Path::new(filename)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("quantica_program");
+
     // Simulate exporting the graph for the TPU
     let hlo_ir = compiler.export_to_hlo_ir(module_name)?;
     println!("   -> XLA/HLO IR Exported");
-    
 
-    
     // --- LLVM IR Dump
     if emit_llvm {
         println!("\n--- GENERATED LLVM IR (Optimized) ---");
         compiler.dump_ir();
         println!("-------------------------------------\n");
-        
+
         // dump the specialized HLO IR when the flag is present
         println!("--- XLA/HLO IR (TPU Target) ---");
         println!("{}", hlo_ir);
@@ -517,10 +621,16 @@ fn compile_file_llvm(filename: &str, output_file: &str, emit_llvm: bool, opt_lev
 
     if target != CompilationTarget::HostCPU {
         // GPU/TPU compilation path: generate the IR and skip the linking to a .exe
-        println!("⚠️ Target is {:?}. Skipping AOT linking and outputting IR only.", target);
-        
+        println!(
+            "⚠️ Target is {:?}. Skipping AOT linking and outputting IR only.",
+            target
+        );
+
         // Simulating the final HLO/SPIR-V export by calling the exporter
-        let module_name = Path::new(filename).file_stem().and_then(|s| s.to_str()).unwrap_or("quantica_program");
+        let module_name = Path::new(filename)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("quantica_program");
         let hlo_ir = compiler.export_to_hlo_ir(module_name)?;
 
         if emit_llvm {
@@ -530,18 +640,20 @@ fn compile_file_llvm(filename: &str, output_file: &str, emit_llvm: bool, opt_lev
         }
         return Ok(()); //
     }
-    
+
     // Save to object file
     compiler.write_to_object_file(output_file)?;
     println!("   -> Emitted object file");
 
-    
-
     Ok(())
 }
 
-
-fn run_jit_file(filename: &str, emit_llvm: bool, opt_level: OptimizationLevel, target: CompilationTarget) -> Result<(), String> {
+fn run_jit_file(
+    filename: &str,
+    emit_llvm: bool,
+    opt_level: OptimizationLevel,
+    target: CompilationTarget,
+) -> Result<(), String> {
     println!("🚀 JIT Compiling and Running: {}\n", filename);
 
     // Read, Lex, Parse
@@ -549,30 +661,29 @@ fn run_jit_file(filename: &str, emit_llvm: bool, opt_level: OptimizationLevel, t
         .map_err(|e| format!("Failed to read file '{}': {}", filename, e))?;
 
     let mut lexer = Lexer::new(&source);
-    let tokens = lexer.tokenize()
+    let tokens = lexer
+        .tokenize()
         .map_err(|e| format!("Lexer error: {}", e))?;
-    
+
     let mut parser = Parser::new(tokens);
-    let ast = parser.parse()
-        .map_err(|e| format!("Parser error: {}", e))?;
+    let ast = parser.parse().map_err(|e| format!("Parser error: {}", e))?;
 
     //  Type Check
-    TypeChecker::check_program(&ast)
-        .map_err(|e| format!("Type error: {}", e))?;
+    TypeChecker::check_program(&ast).map_err(|e| format!("Type error: {}", e))?;
 
     if target == CompilationTarget::SPIRV {
         println!("🚀 Accelerating with SPIR-V/GPU Backend...");
     } else if target == CompilationTarget::XLA {
         println!("🚀 Accelerating with XLA/TPU Backend...");
     }
-    
+
     println!("⚙️ Phase 3: Compiling for JIT...");
 
     let jit_program = if let ASTNode::Program(ref nodes) = ast {
-        let has_main = nodes.iter().any(|node| {
-            matches!(node, ASTNode::FunctionDeclaration { name, .. } if name == "main")
-        });
-        
+        let has_main = nodes.iter().any(
+            |node| matches!(node, ASTNode::FunctionDeclaration { name, .. } if name == "main"),
+        );
+
         if has_main {
             ast
         } else {
@@ -593,13 +704,15 @@ fn run_jit_file(filename: &str, emit_llvm: bool, opt_level: OptimizationLevel, t
     let mut compiler = Compiler::new(&context, opt_level);
 
     let function_names = if let ASTNode::Program(s) = &jit_program {
-        s.iter().filter_map(|stmt| {
-            if let ASTNode::FunctionDeclaration { name, .. } = stmt {
-                Some(name.clone())
-            } else {
-                None
-            }
-        }).collect()
+        s.iter()
+            .filter_map(|stmt| {
+                if let ASTNode::FunctionDeclaration { name, .. } = stmt {
+                    Some(name.clone())
+                } else {
+                    None
+                }
+            })
+            .collect()
     } else {
         Vec::new()
     };
@@ -612,28 +725,30 @@ fn run_jit_file(filename: &str, emit_llvm: bool, opt_level: OptimizationLevel, t
         println!("\n--- GENERATED LLVM IR (JIT) ---");
         compiler.dump_ir();
         println!("-------------------------------\n");
-    } 
-    
+    }
+
     println!("✨ Program Output:");
     println!();
-    
+
     // Flush stdout BEFORE executing JIT code
     use std::io::Write;
     let _ = std::io::stdout().flush();
-    
+
     let start_time = Instant::now();
     compiler.run_jit()?;
     let duration = start_time.elapsed();
-    
+
     // Flush stdout AFTER JIT execution
     let _ = std::io::stdout().flush();
-    
+
     println!();
-    println!("⏱️  JIT Execution Time: {:.6} seconds", duration.as_secs_f64());
+    println!(
+        "⏱️  JIT Execution Time: {:.6} seconds",
+        duration.as_secs_f64()
+    );
 
     Ok(())
 }
-
 
 fn run_test_suite() {
     println!("=== Running Quantica Test Suite ===\n");
@@ -651,14 +766,14 @@ fn run_test_suite() {
                         continue;
                     }
                 };
-                
+
                 let path = entry.path();
                 if path.is_file() {
                     if let Some(ext) = path.extension() {
                         if ext == "qc" {
                             let filename = path.to_str().unwrap_or("unknown file");
                             print!("Running test: {} ... ", filename);
-                            
+
                             // Run the test file and capture its result
                             match run_test_file(filename) {
                                 Ok(()) => {
@@ -695,52 +810,52 @@ fn run_test_suite() {
     }
 }
 
-
 /// Runs the full pipeline on a single file, returning a Result.
 fn run_test_file(filename: &str) -> Result<(), String> {
-    
     //Read source
     let source = fs::read_to_string(filename)
         .map_err(|e| format!("Failed to read file '{}': {}", filename, e))?;
-    
+
     // Lexical Analysis
     let mut lexer = Lexer::new(&source);
-    let tokens = lexer.tokenize()
+    let tokens = lexer
+        .tokenize()
         .map_err(|e| format!("Lexer error: {}", e))?;
-    
+
     // Syntax Analysis (Parsing)
     let mut parser = Parser::new(tokens);
-    let ast = parser.parse()
-        .map_err(|e| format!("Parser error: {}", e))?;
-    
+    let ast = parser.parse().map_err(|e| format!("Parser error: {}", e))?;
+
     // Type Checking
-    TypeChecker::check_program(&ast)
-        .map_err(|e| format!("Type error: {}", e))?;
-    
+    TypeChecker::check_program(&ast).map_err(|e| format!("Type error: {}", e))?;
+
     //Interpretation (Evaluation)
     let env = std::rc::Rc::new(std::cell::RefCell::new(Environment::new()));
-    Evaluator::evaluate_program(&ast, &env)
-        .map_err(|e| format!("Runtime Error: {}", e))?; // assert() failure will be caught here
+    Evaluator::register_builtins(&env);
+    Evaluator::evaluate_program(&ast, &env).map_err(|e| format!("Runtime Error: {}", e))?; // assert() failure will be caught here
 
     //If all steps passed:
     Ok(())
 }
 
-fn print_ast(node: &ASTNode, indent: usize) { 
+fn print_ast(node: &ASTNode, indent: usize) {
     let prefix = "  ".repeat(indent);
-    
+
     match node {
-        ASTNode::Program(statements) => { 
+        ASTNode::Program(statements) => {
             println!("{}Program:", prefix);
             for stmt in statements {
                 print_ast(stmt, indent + 1);
             }
         }
         ASTNode::LetDeclaration { .. } => {
-             println!("{}LetDeclaration", prefix);
-             
+            println!("{}LetDeclaration", prefix);
         }
-        ASTNode::QuantumDeclaration { name, size, initial_state } => {
+        ASTNode::QuantumDeclaration {
+            name,
+            size,
+            initial_state,
+        } => {
             let size_str = if let Some(_s) = size {
                 format!("[size]")
             } else {
@@ -759,23 +874,47 @@ fn print_ast(node: &ASTNode, indent: usize) {
             };
             println!("{}Import {} as {}", prefix, path_str, alias);
         }
-        
-        ASTNode::FunctionDeclaration { name, parameters, return_type, body , .. } => {
+
+        ASTNode::FunctionDeclaration {
+            name,
+            parameters,
+            return_type,
+            body,
+            ..
+        } => {
             let ret_str = if let Some(t) = return_type {
                 format!(" -> {:?}", t)
             } else {
                 String::new()
             };
-            println!("{}Function {}({} params){}", prefix, name, parameters.len(), ret_str);
+            println!(
+                "{}Function {}({} params){}",
+                prefix,
+                name,
+                parameters.len(),
+                ret_str
+            );
             print_ast(body, indent + 1);
         }
-        ASTNode::CircuitDeclaration { name, parameters, return_type, body, .. } => {
+        ASTNode::CircuitDeclaration {
+            name,
+            parameters,
+            return_type,
+            body,
+            ..
+        } => {
             let ret_str = if let Some(t) = return_type {
                 format!(" -> {:?}", t)
             } else {
                 String::new()
             };
-            println!("{}Circuit {}({} params){}", prefix, name, parameters.len(), ret_str);
+            println!(
+                "{}Circuit {}({} params){}",
+                prefix,
+                name,
+                parameters.len(),
+                ret_str
+            );
             print_ast(body, indent + 1);
         }
         ASTNode::Return(value) => {
@@ -784,7 +923,12 @@ fn print_ast(node: &ASTNode, indent: usize) {
                 print_ast(v, indent + 1);
             }
         }
-        ASTNode::If { condition, then_block, elif_blocks, else_block } => {
+        ASTNode::If {
+            condition,
+            then_block,
+            elif_blocks,
+            else_block,
+        } => {
             println!("{}If:", prefix);
             println!("{}  Condition:", prefix);
             print_ast(condition, indent + 2);
@@ -800,7 +944,11 @@ fn print_ast(node: &ASTNode, indent: usize) {
                 print_ast(else_body, indent + 2);
             }
         }
-        ASTNode::For { variable, iterator, body } => {
+        ASTNode::For {
+            variable,
+            iterator,
+            body,
+        } => {
             println!("{}For {} in:", prefix, variable);
             print_ast(iterator, indent + 1);
             print_ast(body, indent + 1);
@@ -810,20 +958,35 @@ fn print_ast(node: &ASTNode, indent: usize) {
             print_ast(condition, indent + 1);
             print_ast(body, indent + 1);
         }
-        ASTNode::Binary { operator, left, right, .. } => {
+        ASTNode::Binary {
+            operator,
+            left,
+            right,
+            ..
+        } => {
             println!("{}Binary {:?}:", prefix, operator);
             print_ast(left, indent + 1);
             print_ast(right, indent + 1);
         }
-   
-        ASTNode::ParameterizedGate { ref name, ref parameters, loc: _, ..} => {
-            println!("{}Parameterized gate: {} with params {:?}", prefix, name, parameters);
-        },
+
+        ASTNode::ParameterizedGate {
+            ref name,
+            ref parameters,
+            loc: _,
+            ..
+        } => {
+            println!(
+                "{}Parameterized gate: {} with params {:?}",
+                prefix, name, parameters
+            );
+        }
         ASTNode::Unary { operator, operand } => {
             println!("{}Unary {:?}:", prefix, operator);
             print_ast(operand, indent + 1);
         }
-        ASTNode::FunctionCall { callee, arguments, .. } => {
+        ASTNode::FunctionCall {
+            callee, arguments, ..
+        } => {
             println!("{}FunctionCall({} args)", prefix, arguments.len());
             println!("{}  Callee:", prefix);
             print_ast(callee, indent + 2);
@@ -832,7 +995,11 @@ fn print_ast(node: &ASTNode, indent: usize) {
                 print_ast(arg, indent + 2);
             }
         }
-        ASTNode::Apply { gate_expr, arguments, .. } => {
+        ASTNode::Apply {
+            gate_expr,
+            arguments,
+            ..
+        } => {
             println!("{}Apply ({} args):", prefix, arguments.len());
             println!("{}  Gate:", prefix);
             print_ast(gate_expr, indent + 2); // Print the gate expression
@@ -890,6 +1057,71 @@ fn print_ast(node: &ASTNode, indent: usize) {
             println!("{}MemberAccess .{}:", prefix, member);
             print_ast(object, indent + 1);
         }
+        ASTNode::ClassDeclaration {
+            name,
+            superclass,
+            fields,
+            methods,
+            constructor,
+            ..
+        } => {
+            let super_str = if let Some(s) = superclass {
+                format!(" extends {}", s)
+            } else {
+                String::new()
+            };
+            println!("{}Class {}{}:", prefix, name, super_str);
+
+            if !fields.is_empty() {
+                println!("{}  Fields:", prefix);
+                for field in fields {
+                    println!("{}    {}: {:?}", prefix, field.name, field.field_type);
+                }
+            }
+
+            if let Some(ctor) = constructor {
+                println!("{}  Constructor:", prefix);
+                print_ast(ctor, indent + 2);
+            }
+
+            if !methods.is_empty() {
+                println!("{}  Methods:", prefix);
+                for method in methods {
+                    println!("{}    Method {}:", prefix, method.name);
+                    print_ast(&method.body, indent + 3);
+                }
+            }
+        }
+
+        ASTNode::NewInstance {
+            class_name,
+            arguments,
+            ..
+        } => {
+            println!("{}New Instance of {}:", prefix, class_name);
+            for arg in arguments {
+                print_ast(arg, indent + 1);
+            }
+        }
+
+        ASTNode::MethodCall {
+            object,
+            method_name,
+            arguments,
+            ..
+        } => {
+            println!("{}Method Call .{}():", prefix, method_name);
+            println!("{}  Object:", prefix);
+            print_ast(object, indent + 2);
+            println!("{}  Arguments:", prefix);
+            for arg in arguments {
+                print_ast(arg, indent + 2);
+            }
+        }
+
+        ASTNode::SelfRef { .. } => {
+            println!("{}Self", prefix);
+        }
         ASTNode::ArrayLiteral(elements) => {
             println!("{}Array[{}]:", prefix, elements.len());
             for elem in elements {
@@ -905,7 +1137,11 @@ fn print_ast(node: &ASTNode, indent: usize) {
                 print_ast(value, indent + 2);
             }
         }
-        ASTNode::Range { start, end, inclusive } => {
+        ASTNode::Range {
+            start,
+            end,
+            inclusive,
+        } => {
             let op = if *inclusive { "..=" } else { ".." };
             println!("{}Range {}:", prefix, op);
             print_ast(start, indent + 1);
@@ -941,7 +1177,7 @@ fn print_ast(node: &ASTNode, indent: usize) {
                 ImportPath::Module(m) => m.join("."),
             };
             println!("{}FromImport {}:", prefix, path_str);
-            
+
             match spec {
                 ImportSpec::All => {
                     println!("{}  - * (All)", prefix);
@@ -956,7 +1192,11 @@ fn print_ast(node: &ASTNode, indent: usize) {
         ASTNode::Continue => {
             println!("{}Continue", prefix);
         }
-        ASTNode::TryCatch { try_block, error_variable, catch_block } => {
+        ASTNode::TryCatch {
+            try_block,
+            error_variable,
+            catch_block,
+        } => {
             println!("{}Try:", prefix);
             print_ast(try_block, indent + 1);
 
@@ -973,7 +1213,7 @@ fn print_ast(node: &ASTNode, indent: usize) {
 
 fn run_lexer_only(filename: &str) {
     println!("🔤 Tokenizing: {}\n", filename);
-    
+
     let source = match fs::read_to_string(filename) {
         Ok(content) => content,
         Err(e) => {
@@ -981,30 +1221,26 @@ fn run_lexer_only(filename: &str) {
             std::process::exit(1);
         }
     };
-    
+
     let mut lexer = Lexer::new(&source);
-    
+
     match lexer.tokenize() {
         Ok(tokens) => {
             println!("✓ Lexer succeeded! Found {} tokens\n", tokens.len());
             println!("{:-<60}", "");
-            
-            let important_tokens: Vec<_> = tokens.iter()
-                .filter(|t| !matches!(t.token, 
-                    Token::Newline | 
-                    Token::Indent | 
-                    Token::Dedent))
+
+            let important_tokens: Vec<_> = tokens
+                .iter()
+                .filter(|t| !matches!(t.token, Token::Newline | Token::Indent | Token::Dedent))
                 .collect();
-            
+
             for (i, token) in important_tokens.iter().enumerate() {
-                println!("{:4}: Line {:3}, Col {:3} - {:?}", 
-                    i, 
-                    token.line, 
-                    token.column, 
-                    token.token
+                println!(
+                    "{:4}: Line {:3}, Col {:3} - {:?}",
+                    i, token.line, token.column, token.token
                 );
             }
-            
+
             println!("{:-<60}", "");
             println!("\n✓ Tokenization complete!");
         }
@@ -1019,9 +1255,10 @@ fn run_repl() {
     // Create persistent environments for the *entire session*
     let runtime_env = std::rc::Rc::new(std::cell::RefCell::new(Environment::new()));
     let type_env = std::rc::Rc::new(std::cell::RefCell::new(TypeEnvironment::new()));
-    
+
     // Prefill the type environment just once
     TypeChecker::prefill_environment(&type_env);
+    Evaluator::register_builtins(&runtime_env);
 
     let mut source_buffer = String::new();
     let mut is_continuation = false;
@@ -1060,7 +1297,7 @@ fn run_repl() {
         }
 
         // Try to compile the buffer
-        
+
         // Lexer
         let mut lexer = Lexer::new(&source_buffer);
         let tokens = match lexer.tokenize() {
@@ -1083,8 +1320,11 @@ fn run_repl() {
         let mut parser = Parser::new(tokens.clone());
         let ast = match parser.parse() {
             Ok(tree) => tree,
-            Err(e) if e.contains("Unexpected EOF") || e.contains("Expected Indent") || e.contains("Dedent") => {
-                
+            Err(e)
+                if e.contains("Unexpected EOF")
+                    || e.contains("Expected Indent")
+                    || e.contains("Dedent") =>
+            {
                 is_continuation = true;
                 continue;
             }
@@ -1105,7 +1345,7 @@ fn run_repl() {
                 if let Err(e) = type_check_result {
                     println!("Type Error: {}", e);
                     // Don't execute if type check fails
-                    break; 
+                    break;
                 }
 
                 //  Evaluate the single statement
@@ -1130,28 +1370,29 @@ fn run_repl() {
     }
 }
 fn run_doc_generator(filename: &str, output_file: &str) -> Result<(), String> {
-    
     // Read source
     println!("   -> Step 1: Reading source file...");
     let source = fs::read_to_string(filename)
         .map_err(|e| format!("Failed to read file '{}': {}", filename, e))?;
-    
+
     // Lexical Analysis
     println!("   -> Step 2: Lexing tokens...");
     let mut lexer = Lexer::new(&source);
-    let tokens = lexer.tokenize()
+    let tokens = lexer
+        .tokenize()
         .map_err(|e| format!("Lexer error: {}", e))?;
-    
+
     // Syntax Analysis (Parsing)
     println!("   -> Step 3: Parsing AST...");
     let mut parser = Parser::new(tokens);
-    let ast = parser.parse() // 
+    let ast = parser
+        .parse() //
         .map_err(|e| format!("Parser error: {}", e))?;
-    
+
     // 4. Generate Documentation
     println!("   -> Step 4: Generating docs...");
     DocGenerator::run(&ast, output_file)?;
-    
+
     println!("   -> Step 5: Done.");
     Ok(())
 }
@@ -1162,66 +1403,99 @@ fn parse_opt_level(arg: &str) -> Result<OptimizationLevel, String> {
         "-O1" => Ok(OptimizationLevel::Less),
         "-O2" => Ok(OptimizationLevel::Default),
         "-O3" => Ok(OptimizationLevel::Aggressive),
-        _ => Err(format!("Unknown optimization flag: {}. Use -O0, -O1, -O2, or -O3.", arg)),
+        _ => Err(format!(
+            "Unknown optimization flag: {}. Use -O0, -O1, -O2, or -O3.",
+            arg
+        )),
     }
 }
 
-
-fn run_on_hardware(filename: &str, config: QuantumConfig) -> Result<(), Box<dyn std::error::Error>> {
+fn run_on_hardware(
+    filename: &str,
+    config: QuantumConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
     println!("🚀 Executing on Quantum Hardware: {:?}\n", config.provider);
     println!("📄 File: {}", filename);
-    println!("🎯 Device: {}", config.device_name.as_ref().unwrap_or(&"default".to_string()));
+    println!(
+        "🎯 Device: {}",
+        config
+            .device_name
+            .as_ref()
+            .unwrap_or(&"default".to_string())
+    );
     println!("🎲 Shots: {}\n", config.shots);
 
     // Read source
-    let source = fs::read_to_string(filename)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let source = fs::read_to_string(filename).map_err(|e| format!("Failed to read file: {}", e))?;
 
     // Lex
     println!("🔤 Phase 1: Lexical Analysis");
     let mut lexer = Lexer::new(&source);
-    let tokens = lexer.tokenize()
+    let tokens = lexer
+        .tokenize()
         .map_err(|e| format!("Lexer error: {}", e))?;
 
     // Parse
     println!("🌳 Phase 2: Syntax Analysis");
     let mut parser = Parser::new(tokens);
-    let ast = parser.parse()
-        .map_err(|e| format!("Parser error: {}", e))?;
+    let ast = parser.parse().map_err(|e| format!("Parser error: {}", e))?;
 
     // Type Check
     println!("🔬 Phase 3: Type Checking");
-    TypeChecker::check_program(&ast)
-        .map_err(|e| format!("Type error: {}", e))?;
+    TypeChecker::check_program(&ast).map_err(|e| format!("Type error: {}", e))?;
     println!("✓ Type check succeeded!\n");
 
     // Execute on hardware
     println!("📡 Phase 4: Hardware Execution");
     let env = std::rc::Rc::new(std::cell::RefCell::new(Environment::new()));
     let mut executor = HardwareExecutor::new(config);
-    
-    let result = executor.execute_on_hardware(&ast, &env)
+
+    let result = executor
+        .execute_on_hardware(&ast, &env)
         .map_err(|e| format!("Hardware execution error: {}", e))?;
 
     if result.success {
         println!("\n✅ Hardware execution successful!");
-        
+
         // Show top results
         if !result.counts.is_empty() {
             println!("\n📊 Measurement Results:");
             let mut sorted: Vec<_> = result.counts.iter().collect();
             sorted.sort_by(|a, b| b.1.cmp(a.1));
-            
+
             for (i, (bitstring, count)) in sorted.iter().take(10).enumerate() {
                 let prob = **count as f64 / result.shots as f64;
-                println!("  {}. |{}⟩: {} ({:.2}%)", i + 1, bitstring, count, prob * 100.0);
+                println!(
+                    "  {}. |{}⟩: {} ({:.2}%)",
+                    i + 1,
+                    bitstring,
+                    count,
+                    prob * 100.0
+                );
             }
         }
     } else {
-        eprintln!("❌ Hardware execution failed: {}", 
-                  result.error_message.unwrap_or("Unknown error".to_string()));
+        eprintln!(
+            "❌ Hardware execution failed: {}",
+            result.error_message.unwrap_or("Unknown error".to_string())
+        );
     }
 
     Ok(())
 }
+fn parse_error_location(error_msg: &str) -> Option<parser::ast::Loc> {
+    // Look for "at [Line X, Col Y]"
+    let start_bytes = error_msg.find("[Line ")?;
+    let rest = &error_msg[start_bytes..];
+    let end_bytes = rest.find(']')?;
+    let content = &rest[6..end_bytes]; // skip "[Line "
 
+    // content is now "X, Col Y"
+    let parts: Vec<&str> = content.split(", Col ").collect();
+    if parts.len() == 2 {
+        let line = parts[0].parse().ok()?;
+        let column = parts[1].parse().ok()?;
+        return Some(parser::ast::Loc { line, column });
+    }
+    None
+}

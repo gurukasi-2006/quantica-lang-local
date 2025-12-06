@@ -10,6 +10,7 @@ pub struct Lexer {
     column: usize,
     indent_stack: Vec<usize>,
     start_of_line: bool,
+    nesting_level: usize,
 }
 
 impl Lexer {
@@ -21,29 +22,31 @@ impl Lexer {
             column: 1,
             indent_stack: vec![0],
             start_of_line: true,
+            nesting_level: 0,
         }
     }
-    
+
     pub fn tokenize(&mut self) -> Result<Vec<TokenWithLocation>, String> {
         let mut tokens = Vec::new();
-        
+
         while !self.is_at_end() {
             loop {
-                if self.start_of_line {
+                if self.start_of_line && self.nesting_level == 0 {
                     self.handle_indentation(&mut tokens)?;
                 }
-                self.skip_whitespace_except_newline(); 
-    
+
+                self.skip_whitespace_except_newline();
+
                 if self.current_char().ok() == Some('/') {
                     if self.peek() == Some('/') {
                         // Single-line comment
-                        self.advance(); 
-                        self.skip_single_line_comment(); 
-                        continue; 
+                        self.advance();
+                        self.skip_single_line_comment();
+                        continue;
                     } else if self.peek() == Some('*') {
                         // Multiline comment /* ... */
-                        self.advance(); 
-                        self.advance();
+                        self.advance(); // consume '/'
+                        self.advance(); // consume '*'
                         self.skip_multiline_comment()?;
                         continue;
                     } else {
@@ -51,176 +54,257 @@ impl Lexer {
                         break;
                     }
                 } else {
-                    break; 
+                    break;
                 }
             }
-    
+
             if self.is_at_end() {
                 break;
             }
-    
-            if self.current_char().ok() == Some('\n') {
+
+            /*if self.current_char().ok() == Some('\n') {
                 self.advance();
                 tokens.push(self.make_token(Token::Newline, 1));
-                continue; 
+                continue;
+            }*/
+
+            // Check for and consume a newline *after* indentation
+            if self.current_char().ok() == Some('\n') {
+                self.advance(); // Consume the newline
+                if self.nesting_level == 0 {
+                    tokens.push(self.make_token(Token::Newline, 1));
+                }
+                continue; // Restart main loop
             }
 
-         
+            // --- 3. Process the next actual token ---
             let _start_col = self.column;
             let ch = self.current_char()?;
 
-           
+            // 'token_result' must be a Result
             let token_result = match ch {
-                
+                // Quantum notation
                 '|' => {
                     if self.is_quantum_ket() {
                         self.ket_notation()
                     } else if self.peek() == Some('>') {
-                        self.advance(); self.advance();
+                        self.advance();
+                        self.advance();
                         Ok(self.make_token(Token::PipeRight, 2))
                     } else if self.peek() == Some('|') {
-                        self.advance(); self.advance();
+                        self.advance();
+                        self.advance();
                         Ok(self.make_token(Token::DoublePipe, 2))
                     } else {
-                        self.advance(); Ok(self.make_token(Token::Pipe, 1))
+                        self.advance();
+                        Ok(self.make_token(Token::Pipe, 1))
                     }
                 }
                 '{' => {
                     if self.is_quantum_bra() {
                         self.bra_notation()
                     } else {
-                        self.advance(); Ok(self.make_token(Token::LeftBrace, 1))
+                        self.advance();
+                        self.nesting_level += 1;
+                        Ok(self.make_token(Token::LeftBrace, 1))
                     }
                 }
-                
-         
-                '+' => { self.advance(); Ok(self.make_token(Token::Plus, 1)) }
+
+                // Operators
+                '+' => {
+                    self.advance();
+                    Ok(self.make_token(Token::Plus, 1))
+                }
                 '-' => {
                     if self.peek() == Some('>') {
-                        self.advance(); self.advance();
+                        self.advance();
+                        self.advance();
                         Ok(self.make_token(Token::Arrow, 2))
                     } else {
-                        self.advance(); Ok(self.make_token(Token::Minus, 1))
+                        self.advance();
+                        Ok(self.make_token(Token::Minus, 1))
                     }
                 }
                 '*' => {
                     if self.peek() == Some('*') && self.peek_n(2) == Some('*') {
-                        self.advance(); self.advance(); self.advance();
+                        self.advance();
+                        self.advance();
+                        self.advance();
                         Ok(self.make_token(Token::TensorProduct, 3))
                     } else {
-                        self.advance(); Ok(self.make_token(Token::Star, 1))
+                        self.advance();
+                        Ok(self.make_token(Token::Star, 1))
                     }
                 }
-                '/' => { self.advance(); Ok(self.make_token(Token::Slash, 1)) }
-                '%' => { self.advance(); Ok(self.make_token(Token::Percent, 1)) }
-                '^' => { self.advance(); Ok(self.make_token(Token::Caret, 1)) }
+                '/' => {
+                    self.advance();
+                    Ok(self.make_token(Token::Slash, 1))
+                }
+                '%' => {
+                    self.advance();
+                    Ok(self.make_token(Token::Percent, 1))
+                }
+                '^' => {
+                    self.advance();
+                    Ok(self.make_token(Token::Caret, 1))
+                }
                 '=' => {
                     if self.peek() == Some('=') {
-                        self.advance(); self.advance();
+                        self.advance();
+                        self.advance();
                         Ok(self.make_token(Token::EqualEqual, 2))
                     } else if self.peek() == Some('>') {
                         if self.peek_n(2) == Some('>') {
-                            self.advance(); self.advance(); self.advance();
+                            self.advance();
+                            self.advance();
+                            self.advance();
                             Ok(self.make_token(Token::PipeDouble, 3))
                         } else {
-                            self.advance(); self.advance();
+                            self.advance();
+                            self.advance();
                             Ok(self.make_token(Token::FatArrow, 2))
                         }
                     } else {
-                        self.advance(); Ok(self.make_token(Token::Equal, 1))
+                        self.advance();
+                        Ok(self.make_token(Token::Equal, 1))
                     }
                 }
                 '!' => {
                     if self.peek() == Some('=') {
-                        self.advance(); self.advance();
+                        self.advance();
+                        self.advance();
                         Ok(self.make_token(Token::NotEqual, 2))
                     } else {
-                        self.advance(); Ok(self.make_token(Token::Bang, 1))
+                        self.advance();
+                        Ok(self.make_token(Token::Bang, 1))
                     }
                 }
                 '<' => {
                     if self.peek() == Some('=') {
-                        self.advance(); self.advance();
+                        self.advance();
+                        self.advance();
                         Ok(self.make_token(Token::LessEqual, 2))
                     } else {
-                        self.advance(); Ok(self.make_token(Token::Less, 1))
+                        self.advance();
+                        Ok(self.make_token(Token::Less, 1))
                     }
                 }
                 '>' => {
                     if self.peek() == Some('=') {
-                        self.advance(); self.advance();
+                        self.advance();
+                        self.advance();
                         Ok(self.make_token(Token::GreaterEqual, 2))
                     } else {
-                        self.advance(); Ok(self.make_token(Token::Greater, 1))
+                        self.advance();
+                        Ok(self.make_token(Token::Greater, 1))
                     }
                 }
                 '?' => {
                     if self.peek() == Some('.') {
-                        self.advance(); self.advance();
+                        self.advance();
+                        self.advance();
                         Ok(self.make_token(Token::SafeNav, 2))
                     } else {
-                        self.advance(); Ok(self.make_token(Token::Question, 1))
+                        self.advance();
+                        Ok(self.make_token(Token::Question, 1))
                     }
                 }
-                
-              
+
+                // Strings, Chars, Numbers, Identifiers
                 '"' => self.string_literal(),
                 '\'' => self.char_literal(),
                 c if c.is_ascii_digit() => self.number_literal(),
                 c if c.is_alphabetic() || c == '_' => Ok(self.identifier_or_keyword()),
 
                 // Punctuation
-                '(' => { self.advance(); Ok(self.make_token(Token::LeftParen, 1)) }
-                ')' => { self.advance(); Ok(self.make_token(Token::RightParen, 1)) }
-                '[' => { self.advance(); Ok(self.make_token(Token::LeftBracket, 1)) }
-                ']' => { self.advance(); Ok(self.make_token(Token::RightBracket, 1)) }
-                '}' => { self.advance(); Ok(self.make_token(Token::RightBrace, 1)) }
-                ',' => { self.advance(); Ok(self.make_token(Token::Comma, 1)) }
-                ';' => { self.advance(); Ok(self.make_token(Token::Semicolon, 1)) }
+                '(' => {
+                    self.advance();
+                    self.nesting_level += 1;
+                    Ok(self.make_token(Token::LeftParen, 1))
+                }
+                ')' => {
+                    self.advance();
+                    if self.nesting_level > 0 { self.nesting_level -= 1; }
+                    Ok(self.make_token(Token::RightParen, 1))
+                }
+                '[' => {
+                    self.advance();
+                    self.nesting_level += 1;
+                    Ok(self.make_token(Token::LeftBracket, 1))
+                }
+                ']' => {
+                    self.advance();
+                    if self.nesting_level > 0 { self.nesting_level -= 1; }
+                    Ok(self.make_token(Token::RightBracket, 1))
+                }
+                '}' => {
+                    self.advance();
+                    if self.nesting_level > 0 { self.nesting_level -= 1; }
+                    Ok(self.make_token(Token::RightBrace, 1))
+                }
+                ',' => {
+                    self.advance();
+                    Ok(self.make_token(Token::Comma, 1))
+                }
+                ';' => {
+                    self.advance();
+                    Ok(self.make_token(Token::Semicolon, 1))
+                }
                 ':' => {
                     if self.peek() == Some(':') {
-                        self.advance(); self.advance();
+                        self.advance();
+                        self.advance();
                         Ok(self.make_token(Token::DoubleColon, 2))
                     } else if self.peek() == Some('=') {
-                        self.advance(); self.advance();
+                        self.advance();
+                        self.advance();
                         Ok(self.make_token(Token::ColonEqual, 2))
                     } else {
-                        self.advance(); Ok(self.make_token(Token::Colon, 1))
+                        self.advance();
+                        Ok(self.make_token(Token::Colon, 1))
                     }
                 }
                 '.' => {
                     if self.peek() == Some('.') {
                         if self.peek_n(2) == Some('=') {
-                            self.advance(); self.advance(); self.advance();
+                            self.advance();
+                            self.advance();
+                            self.advance();
                             Ok(self.make_token(Token::RangeInclusive, 3))
                         } else {
-                            self.advance(); self.advance();
+                            self.advance();
+                            self.advance();
                             Ok(self.make_token(Token::Range, 2))
                         }
                     } else {
-                        self.advance(); Ok(self.make_token(Token::Dot, 1))
+                        self.advance();
+                        Ok(self.make_token(Token::Dot, 1))
                     }
                 }
-                
-                _ => Err(format!("Unexpected character '{}' at line {}, column {}", ch, self.line, self.column)),
+
+                _ => Err(format!(
+                    "Unexpected character '{}' at line {}, column {}",
+                    ch, self.line, self.column
+                )),
             };
 
             tokens.push(token_result?);
         }
-        
-   
+
+        // --- Handle final dedents and EOF ---
         while self.indent_stack.len() > 1 {
+            // Assumes 0 is root
             self.indent_stack.pop();
             tokens.push(self.make_token(Token::Dedent, 0));
         }
-        
+
         tokens.push(self.make_token(Token::Eof, 0));
         Ok(tokens)
     }
 
     fn skip_multiline_comment(&mut self) -> Result<(), String> {
         let start_line = self.line;
-        
+
         loop {
             if self.is_at_end() {
                 return Err(format!(
@@ -228,108 +312,115 @@ impl Lexer {
                     start_line
                 ));
             }
-            
+
             let ch = self.current_char()?;
-            
+
             if ch == '*' && self.peek() == Some('/') {
-               
-                self.advance();
-                self.advance();
+                // Found closing */
+                self.advance(); // consume '*'
+                self.advance(); // consume '/'
                 return Ok(());
             }
-            
+
             self.advance();
         }
     }
-        
+
     fn handle_indentation(&mut self, tokens: &mut Vec<TokenWithLocation>) -> Result<(), String> {
-    let mut indent_level = 0;
-    
-  
-    while !self.is_at_end() {
-        let ch = self.current_char()?;
-        match ch {
-            ' ' => {
-                indent_level += 1;
-                self.advance();
+        let mut indent_level = 0;
+
+        // 1. Consume whitespace and count indent
+        while !self.is_at_end() {
+            let ch = self.current_char()?;
+            match ch {
+                ' ' => {
+                    indent_level += 1;
+                    self.advance();
+                }
+                '\t' => {
+                    indent_level += 4; // Tab = 4 spaces
+                    self.advance();
+                }
+                '\r' => {
+                    // FIX: Ignore Carriage Return, just skip it
+                    self.advance();
+                }
+                _ => break, // Stop at content, newline, or comment
             }
-            '\t' => {
-                indent_level += 4;
-                self.advance();
-            }
-            _ => break, 
         }
+
+        // 2. Check if the line is blank (only newline or comment ahead)
+        if !self.is_at_end() {
+            let ch = self.current_char()?;
+            // Check for newline OR a comment
+            // FIX: We don't need to check for \r here because we consumed it in the loop above
+            if ch == '\n' || (ch == '/' && self.peek() == Some('/')) {
+                // This is a blank line. Do NOT emit Indent/Dedent.
+                // The main loop will handle the newline or comment.
+                self.start_of_line = false; // Clear the flag
+                return Ok(());
+            }
+        }
+
+        // 3. Line is NOT blank. Clear start_of_line flag
+        self.start_of_line = false;
+
+        // 4. Process Indent/Dedent logic.
+        let current_indent = *self.indent_stack.last().unwrap();
+
+        if indent_level > current_indent {
+            self.indent_stack.push(indent_level);
+            tokens.push(self.make_token(Token::Indent, 0));
+        } else if indent_level < current_indent {
+            while let Some(&stack_level) = self.indent_stack.last() {
+                if stack_level <= indent_level {
+                    break;
+                }
+                self.indent_stack.pop();
+                tokens.push(self.make_token(Token::Dedent, 0));
+            }
+
+            if self.indent_stack.last() != Some(&indent_level) {
+                return Err(format!("Indentation error at line {}", self.line));
+            }
+        }
+
+        Ok(())
     }
 
- 
-    if !self.is_at_end() {
-        let ch = self.current_char()?;
-      
-        if ch == '\n' || (ch == '/' && self.peek() == Some('/')) {
-           
-            self.start_of_line = false;
-            return Ok(()); 
-        }
-    }
-    
-
-    self.start_of_line = false;
-    
-  
-    let current_indent = *self.indent_stack.last().unwrap();
-    
-    if indent_level > current_indent {
-        self.indent_stack.push(indent_level);
-        tokens.push(self.make_token(Token::Indent, 0));
-    } else if indent_level < current_indent {
-        while let Some(&stack_level) = self.indent_stack.last() {
-            if stack_level <= indent_level {
-                break;
-            }
-            self.indent_stack.pop();
-            tokens.push(self.make_token(Token::Dedent, 0));
-        }
-        
-        if self.indent_stack.last() != Some(&indent_level) {
-            return Err(format!("Indentation error at line {}", self.line));
-        }
-    }
-    
-    Ok(())
-}
-    
     fn next_token(&mut self) -> Result<Option<TokenWithLocation>, String> {
         let ch = self.current_char()?;
         let start_col = self.column;
-        
+
         let token = match ch {
-         
+            // Comments
             '#' => {
                 self.skip_comment();
                 return Ok(None);
             }
-            
-          
 
-           
+            // Newlines
+            // src/lexer/mod.rs (around line 190, the Newline case)
+
+            // Newlines
             '\n' => {
                 let token = Token::Newline;
-                
-           
-                self.advance(); 
-                
-        
-                let length = 1; 
+
+                // 1. ADVANCE (CONSUME THE \n)
+                self.advance();
+
+                // 2. MAKE TOKEN (Length is 1, Column is now 2)
+                let length = 1; // \n is always one char long
                 let token_with_loc = self.make_token(token, length);
-                
-              
+
+                // 3. RESET COLUMN STATE
                 self.line += 1;
                 self.column = 1;
 
-                return Ok(Some(token_with_loc)); 
+                return Ok(Some(token_with_loc)); // Return the token
             }
-            
-          
+
+            // Quantum state notation |0}, |1}, |+}, |-}
             '|' => {
                 if self.is_quantum_ket() {
                     return Ok(Some(self.ket_notation()?));
@@ -346,8 +437,8 @@ impl Lexer {
                     Token::Pipe
                 }
             }
-            
- 
+
+            // Bra notation {0|, {1|
             '{' => {
                 if self.is_quantum_bra() {
                     return Ok(Some(self.bra_notation()?));
@@ -356,36 +447,40 @@ impl Lexer {
                     Token::LeftBrace
                 }
             }
-            
-       
+
+            // Operators
             '+' => {
                 self.advance();
                 Token::Plus
             }
             '-' => {
-  
+                // Lookahead before advancing
                 if self.peek() == Some('>') {
-                    self.advance(); 
-                    self.advance();
-                    Token::Arrow 
+                    self.advance(); // consume '-'
+                    self.advance(); // consume '>'
+                    Token::Arrow // Found '->'
                 } else {
-                    self.advance();
-                    Token::Minus 
+                    self.advance(); // consume '-'
+                    Token::Minus // Found single '-'
                 }
             }
             '*' => {
-           
+                // Check for '***' (TensorProduct) first
                 if self.peek() == Some('*') && self.input.get(self.position + 2) == Some(&'*') {
-                    self.advance(); 
-                    self.advance(); 
-                    self.advance();
+                    self.advance(); // consume 1st *
+                    self.advance(); // consume 2nd *
+                    self.advance(); // consume 3rd *
                     Token::TensorProduct
-                } 
-                
-                
+                }
+                // Check for '**' (Optional: if you plan to use it for power/exponentiation)
+                /* else if self.peek() == Some('*') {
+                    self.advance(); // consume 1st *
+                    self.advance(); // consume 2nd *
+                    Token::Power // Example: if you had a power token
+                } */
                 else {
-                  
-                    self.advance(); 
+                    // Only consume one *
+                    self.advance();
                     Token::Star
                 }
             }
@@ -398,84 +493,84 @@ impl Lexer {
                 Token::Percent
             }
             '=' => {
-           
+                // Lookahead before advancing for all two- or three-char tokens starting with '='
                 if self.peek() == Some('=') {
-                    self.advance(); 
-                    self.advance(); 
-                    Token::EqualEqual 
+                    self.advance(); // consume first '='
+                    self.advance(); // consume second '='
+                    Token::EqualEqual // Handles '=='
                 } else if self.peek() == Some('>') {
-                
+                    // Check for '=>>' or '=>'
                     if self.input.get(self.position + 2) == Some(&'>') {
-                        self.advance(); 
-                        self.advance();
-                        self.advance(); 
-                        Token::PipeDouble 
+                        self.advance(); // consume '='
+                        self.advance(); // consume '>'
+                        self.advance(); // consume '>'
+                        Token::PipeDouble // Handles '=>>'
                     } else {
-                        self.advance(); 
-                        self.advance(); 
-                        Token::FatArrow 
+                        self.advance(); // consume '='
+                        self.advance(); // consume '>'
+                        Token::FatArrow // Handles '=>'
                     }
                 } else {
-                    self.advance(); 
-                    Token::Equal 
+                    self.advance(); // consume '='
+                    Token::Equal // Handles single '='
                 }
             }
             '!' => {
-              
+                // Lookahead for '!='
                 if self.peek() == Some('=') {
-                    self.advance(); 
-                    self.advance(); 
+                    self.advance(); // consume !
+                    self.advance(); // consume =
                     Token::NotEqual
                 } else {
-                    self.advance();
+                    self.advance(); // consume single !
                     Token::Bang
                 }
             }
             '<' => {
-                
+                // Lookahead for '<='
                 if self.peek() == Some('=') {
-                    self.advance();
-                    self.advance(); 
+                    self.advance(); // consume <
+                    self.advance(); // consume =
                     Token::LessEqual
                 } else {
-                    self.advance(); 
+                    self.advance(); // consume single <
                     Token::Less
                 }
             }
             '>' => {
-              
+                // Lookahead for '>='
                 if self.peek() == Some('=') {
-                    self.advance();
-                    self.advance(); 
+                    self.advance(); // consume >
+                    self.advance(); // consume =
                     Token::GreaterEqual
                 } else {
-                    self.advance();
+                    self.advance(); // consume single >
                     Token::Greater
                 }
             }
             '?' => {
-        
+                // Lookahead for '?.' (SafeNav)
                 if self.peek() == Some('.') {
-                    self.advance();
-                    self.advance();
+                    self.advance(); // consume ?
+                    self.advance(); // consume .
                     Token::SafeNav
                 } else {
-                    self.advance(); 
+                    self.advance(); // consume single ?
                     Token::Question
                 }
             }
-            
-        
+
+            // Strings
             '"' => return Ok(Some(self.string_literal()?)),
             '\'' => return Ok(Some(self.char_literal()?)),
-            
-       
+
+            // Numbers
             c if c.is_ascii_digit() => return Ok(Some(self.number_literal()?)),
-            
-         
+
+            // Identifiers and keywords
             c if c.is_alphabetic() || c == '_' => return Ok(Some(self.identifier_or_keyword())),
-            
-          
+
+            // Punctuation
             '(' => {
                 self.advance();
                 Token::LeftParen
@@ -505,49 +600,54 @@ impl Lexer {
                 Token::Semicolon
             }
             ':' => {
-             
+                // Lookahead for '::' or ':='
                 if self.peek() == Some(':') {
-                    self.advance(); 
-                    self.advance();
+                    self.advance(); // consume first :
+                    self.advance(); // consume second :
                     Token::DoubleColon
                 } else if self.peek() == Some('=') {
-                    self.advance();
-                    self.advance();
+                    self.advance(); // consume :
+                    self.advance(); // consume =
                     Token::ColonEqual
                 } else {
-                    self.advance(); 
+                    self.advance(); // consume single :
                     Token::Colon
                 }
             }
             '.' => {
-             
+                // Check for '...' or '..='
                 if self.peek() == Some('.') {
-             
+                    // Check for '..='
                     if self.input.get(self.position + 2) == Some(&'=') {
-                        self.advance(); 
-                        self.advance(); 
-                        self.advance(); 
+                        self.advance(); // consume first .
+                        self.advance(); // consume second .
+                        self.advance(); // consume =
                         Token::RangeInclusive
                     } else {
-                       
-                        self.advance(); 
-                        self.advance(); 
+                        // Must be '..' (Range)
+                        self.advance(); // consume first .
+                        self.advance(); // consume second .
                         Token::Range
                     }
                 } else {
-                 
+                    // Only consume single '.'
                     self.advance();
                     Token::Dot
                 }
             }
-            
-            _ => return Err(format!("Unexpected character '{}' at line {}, column {}", ch, self.line, self.column)),
+
+            _ => {
+                return Err(format!(
+                    "Unexpected character '{}' at line {}, column {}",
+                    ch, self.line, self.column
+                ))
+            }
         };
-        
+
         let length = self.column - start_col;
         Ok(Some(self.make_token(token, length)))
     }
-    
+
     fn is_quantum_ket(&self) -> bool {
         if self.position + 1 >= self.input.len() {
             return false;
@@ -555,9 +655,9 @@ impl Lexer {
         let next = self.input[self.position + 1];
         next.is_ascii_digit() || next == '+' || next == '-' || next.is_alphabetic()
     }
-    
+
     fn is_quantum_bra(&self) -> bool {
-    
+        // Check if it's {0| pattern
         let mut i = self.position + 1;
         while i < self.input.len() {
             let ch = self.input[i];
@@ -571,49 +671,49 @@ impl Lexer {
         }
         false
     }
-    
+
     fn ket_notation(&mut self) -> Result<TokenWithLocation, String> {
         let start_col = self.column;
-        self.advance(); 
-        
+        self.advance(); // skip |
+
         let mut state = String::new();
         while !self.is_at_end() && self.current_char()? != '}' {
             state.push(self.current_char()?);
             self.advance();
         }
-        
+
         if self.is_at_end() || self.current_char()? != '}' {
             return Err(format!("Unclosed quantum ket at line {}", self.line));
         }
-        
-        self.advance(); 
+
+        self.advance(); // skip }
         let length = self.column - start_col;
         Ok(self.make_token(Token::KetState(state), length))
     }
-    
+
     fn bra_notation(&mut self) -> Result<TokenWithLocation, String> {
         let start_col = self.column;
-        self.advance();
-        
+        self.advance(); // skip {
+
         let mut state = String::new();
         while !self.is_at_end() && self.current_char()? != '|' {
             state.push(self.current_char()?);
             self.advance();
         }
-        
+
         if self.is_at_end() || self.current_char()? != '|' {
             return Err(format!("Unclosed quantum bra at line {}", self.line));
         }
-        
-        self.advance(); 
+
+        self.advance(); // skip |
         let length = self.column - start_col;
         Ok(self.make_token(Token::BraState(state), length))
     }
-    
+
     fn identifier_or_keyword(&mut self) -> TokenWithLocation {
         let start = self.position;
         let start_col = self.column;
-        
+
         while !self.is_at_end() {
             let ch = self.current_char().unwrap();
             if ch.is_alphanumeric() || ch == '_' {
@@ -622,10 +722,10 @@ impl Lexer {
                 break;
             }
         }
-        
+
         let text: String = self.input[start..self.position].iter().collect();
         let length = self.column - start_col;
-        
+
         let token = match text.as_str() {
             // Core keywords
             "let" => Token::Let,
@@ -633,7 +733,11 @@ impl Lexer {
             "auto" => Token::Auto,
             "func" => Token::Func,
             "circuit" => Token::Circuit,
-            "class" => Token::Class,
+            "Class" => Token::Class,
+            "new" => Token::New,
+            "this" => Token::This,
+            "super" => Token::Super,
+            "extends" => Token::Extends,
             "return" => Token::Return,
             "import" => Token::Import,
             "from" => Token::From,
@@ -641,9 +745,9 @@ impl Lexer {
             "as" => Token::As,
             "module" => Token::Module,
             "package" => Token::Package,
-            "print"=>Token::Print,
-            "echo"=>Token::Echo,
-            
+            "print" => Token::Print,
+            "echo" => Token::Echo,
+
             // Control flow
             "if" => Token::If,
             "elif" => Token::Elif,
@@ -655,7 +759,7 @@ impl Lexer {
             "while" => Token::While,
             "break" => Token::Break,
             "continue" => Token::Continue,
-            
+
             // Error handling
             "Try" => Token::Try,
             "Catch" => Token::Catch,
@@ -663,60 +767,59 @@ impl Lexer {
             "Finally" => Token::Finally,
             "Throw" => Token::Throw,
             "Safe" => Token::Safe,
-            
+
             // Parallelism
             "parallel" => Token::Parallel,
             "task" => Token::Task,
             "await" => Token::Await,
             "async" => Token::Async,
             "yield" => Token::Yield,
-            
+
             // Logic
             "And" => Token::And,
             "Or" => Token::Or,
             "Not" => Token::Not,
             "Is" => Token::Is,
-            
+
             // Quantum
             "quantum" => Token::Quantum,
             "apply" => Token::Apply,
             "measure" => Token::Measure,
-            "Swap"=>Token::Swap,
-            "Reset"=>Token::Reset,
-            "CZ"=>Token::CZ,
-            "CS"=>Token::CS,
-            "CT"=>Token::CT,
-            "CPhase"=>Token::CPhase,
-            "U"=>Token::U,
-            "CCX"=>Token::CCX,
-            "Toffoli"=>Token::Toffoli,
-            "dagger"=>Token::Dagger,
-            "controlled"=>Token::Controlled,
-            "RX"=>Token::RX,
-            "RY"=>Token::RY,
-            "RZ"=>Token::RZ,
-
+            "Swap" => Token::Swap,
+            "Reset" => Token::Reset,
+            "CZ" => Token::CZ,
+            "CS" => Token::CS,
+            "CT" => Token::CT,
+            "CPhase" => Token::CPhase,
+            "U" => Token::U,
+            "CCX" => Token::CCX,
+            "Toffoli" => Token::Toffoli,
+            "dagger" => Token::Dagger,
+            "controlled" => Token::Controlled,
+            "RX" => Token::RX,
+            "RY" => Token::RY,
+            "RZ" => Token::RZ,
 
             //quantum gates
-            "Hadamard"=>Token::Hadamard,
-            "CNOT"=>Token::Cnot,
-            "X"=>Token::X,
-            "Y"=>Token::Y,
-            "Z"=>Token::Z,
-            "S"=>Token::S,
-            "T"=>Token::T,
-            
+            "Hadamard" => Token::Hadamard,
+            "CNOT" => Token::Cnot,
+            "X" => Token::X,
+            "Y" => Token::Y,
+            "Z" => Token::Z,
+            "S" => Token::S,
+            "T" => Token::T,
+
             // AI/ML
             "Tensor" => Token::Tensor,
             "Train" => Token::Train,
             "infer" => Token::Infer,
             "Load" => Token::Load,
             "Save" => Token::Save,
-            
+
             // Data structures
             "struct" => Token::Struct,
             "enum" => Token::Enum,
-            
+
             // Modifiers
             "Const" => Token::Const,
             "public" => Token::Public,
@@ -724,24 +827,24 @@ impl Lexer {
             "static" => Token::Static,
             "extern" => Token::Extern,
             "inline" => Token::Inline,
-            
+
             // Meta
             "pragma" => Token::Pragma,
             "sizeof" => Token::Sizeof,
             "typeof" => Token::Typeof,
-            
+
             // Future
             "defer" => Token::Defer,
             "contract" => Token::Contract,
             "where" => Token::Where,
             "generic" => Token::Generic,
-            
+
             // Literals
             "True" => Token::True,
             "False" => Token::False,
             "None" => Token::None,
             "Any" => Token::Any,
-            
+
             // Types
             "Int" => Token::Int,
             "Int8" => Token::Int8,
@@ -764,119 +867,130 @@ impl Lexer {
             "Bool" => Token::Bool,
             "Bit" => Token::Bit,
             "String" => Token::String,
-            
+
             _ => Token::Identifier(text),
         };
-        
+
         self.make_token(token, length)
     }
-    
+
     fn number_literal(&mut self) -> Result<TokenWithLocation, String> {
         let start = self.position;
         let start_col = self.column;
         let mut is_float = false;
-        
+
         // Integer part
         while !self.is_at_end() && self.current_char()?.is_ascii_digit() {
             self.advance();
         }
-        
+
         // Decimal part
         if !self.is_at_end() && self.current_char()? == '.' {
             let next = self.peek();
             if next.is_some() && next.unwrap().is_ascii_digit() {
                 is_float = true;
-                self.advance(); 
-                
+                self.advance(); // skip .
+
                 while !self.is_at_end() && self.current_char()?.is_ascii_digit() {
                     self.advance();
                 }
             }
         }
-        
+
         // Scientific notation
         if !self.is_at_end() && (self.current_char()? == 'e' || self.current_char()? == 'E') {
             is_float = true;
             self.advance();
-            
+
             if !self.is_at_end() && (self.current_char()? == '+' || self.current_char()? == '-') {
                 self.advance();
             }
-            
+
             while !self.is_at_end() && self.current_char()?.is_ascii_digit() {
                 self.advance();
             }
         }
-        
+
         let text: String = self.input[start..self.position].iter().collect();
         let length = self.column - start_col;
-        
+
         let token = if is_float {
-            Token::FloatLiteral(text.parse().map_err(|_| format!("Invalid float: {}", text))?)
+            Token::FloatLiteral(
+                text.parse()
+                    .map_err(|_| format!("Invalid float: {}", text))?,
+            )
         } else {
-            Token::IntLiteral(text.parse().map_err(|_| format!("Invalid integer: {}", text))?)
+            Token::IntLiteral(
+                text.parse()
+                    .map_err(|_| format!("Invalid integer: {}", text))?,
+            )
         };
-        
+
         Ok(self.make_token(token, length))
     }
-    
+
     fn string_literal(&mut self) -> Result<TokenWithLocation, String> {
         let start_col = self.column;
-        self.advance(); 
-        
+        self.advance(); // skip opening "
+
         let mut value = String::new();
-        
+
         while !self.is_at_end() && self.current_char()? != '"' {
             if self.current_char()? == '\\' {
                 self.advance();
                 if self.is_at_end() {
                     return Err("Unterminated string".to_string());
                 }
-                
+
                 match self.current_char()? {
                     'n' => value.push('\n'),
                     't' => value.push('\t'),
                     'r' => value.push('\r'),
                     '\\' => value.push('\\'),
                     '"' => value.push('"'),
-                    _ => return Err(format!("Invalid escape sequence: \\{}", self.current_char()?)),
+                    _ => {
+                        return Err(format!(
+                            "Invalid escape sequence: \\{}",
+                            self.current_char()?
+                        ))
+                    }
                 }
             } else {
                 value.push(self.current_char()?);
             }
             self.advance();
         }
-        
+
         if self.is_at_end() {
             return Err("Unterminated string".to_string());
         }
-        
-        self.advance(); // 
+
+        self.advance(); // skip closing "
         let length = self.column - start_col;
         Ok(self.make_token(Token::StringLiteral(value), length))
     }
-    
+
     fn char_literal(&mut self) -> Result<TokenWithLocation, String> {
         let start_col = self.column;
-        self.advance(); //
-        
+        self.advance(); // skip '
+
         if self.is_at_end() {
             return Err("Empty character literal".to_string());
         }
-        
+
         let ch = self.current_char()?;
         self.advance();
-        
+
         if self.is_at_end() || self.current_char()? != '\'' {
             return Err("Unterminated character literal".to_string());
         }
-        
-        self.advance(); // 
+
+        self.advance(); // skip closing '
         let length = self.column - start_col;
         Ok(self.make_token(Token::IntLiteral(ch as i64), length))
     }
-    
 
+    // Helper methods
     fn current_char(&self) -> Result<char, String> {
         if self.is_at_end() {
             Err("Unexpected end of input".to_string())
@@ -884,7 +998,7 @@ impl Lexer {
             Ok(self.input[self.position])
         }
     }
-    
+
     fn peek(&self) -> Option<char> {
         if self.position + 1 < self.input.len() {
             Some(self.input[self.position + 1])
@@ -902,63 +1016,53 @@ impl Lexer {
     }
 
     fn skip_single_line_comment(&mut self) {
-        self.advance();
-        
+        self.advance(); // Consume the second '/'
 
+        // Loop while 'current_char()' is Ok and not a newline
         while let Ok(ch) = self.current_char() {
             if ch == '\n' {
-                break;
+                break; // Stop at the newline (don't consume it)
             }
             self.advance();
         }
     }
 
-
-    
-
     fn advance(&mut self) {
-    if !self.is_at_end() {
-        let ch = self.input[self.position];
-        self.position += 1;
-        
-        if ch == '\n' {
-            self.line += 1;
-            self.column = 1;
-            self.start_of_line = true;
-        } else {
-            self.column += 1;
-      
+        if !self.is_at_end() {
+            let ch = self.input[self.position];
+            self.position += 1;
+
+            if ch == '\n' {
+                self.line += 1;
+                self.column = 1;
+                self.start_of_line = true;
+            } else {
+                self.column += 1;
+                // Don't modify start_of_line here - let handle_indentation do it
+            }
         }
     }
-}
-    
+
     fn is_at_end(&self) -> bool {
         self.position >= self.input.len()
     }
-    
 
+    // src/lexer/mod.rs (around line 345)
 
+    fn make_token(&self, token: Token, length: usize) -> TokenWithLocation {
+        // Use saturating_sub to ensure the result does not underflow (result is 0 if length > column).
+        let calculated_start_column = self.column.saturating_sub(length);
 
-fn make_token(&self, token: Token, length: usize) -> TokenWithLocation {
-    
-   
-    let calculated_start_column = self.column.saturating_sub(length);
-    
-  
-    let start_column = if calculated_start_column == 0 {
-        1
-    } else {
-        calculated_start_column
-    };
+        // Columns start at 1. If the calculated start is 0, set it to 1.
+        let start_column = if calculated_start_column == 0 {
+            1
+        } else {
+            calculated_start_column
+        };
 
-    TokenWithLocation::new(
-        token, 
-        self.line, 
-        start_column, 
-        length
-    )
-}
-    
+        TokenWithLocation::new(token, self.line, start_column, length)
+    }
+
     fn skip_whitespace_except_newline(&mut self) {
         while !self.is_at_end() {
             let ch = self.input[self.position];
@@ -969,7 +1073,7 @@ fn make_token(&self, token: Token, length: usize) -> TokenWithLocation {
             }
         }
     }
-    
+
     fn skip_comment(&mut self) {
         while !self.is_at_end() && self.current_char().unwrap() != '\n' {
             self.advance();
@@ -977,112 +1081,113 @@ fn make_token(&self, token: Token, length: usize) -> TokenWithLocation {
     }
 }
 
+// Tests
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_keywords() {
         let input = "let mut quantum apply measure";
         let mut lexer = Lexer::new(input);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert_eq!(tokens[0].token, Token::Let);
         assert_eq!(tokens[1].token, Token::Mut);
         assert_eq!(tokens[2].token, Token::Quantum);
         assert_eq!(tokens[3].token, Token::Apply);
         assert_eq!(tokens[4].token, Token::Measure);
     }
-    
+
     #[test]
     fn test_gate_tokens() {
         let input = "Hadamard X Y Z CNOT";
         let mut lexer = Lexer::new(input);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert_eq!(tokens[0].token, Token::Hadamard);
         assert_eq!(tokens[1].token, Token::X);
         assert_eq!(tokens[2].token, Token::Y);
         assert_eq!(tokens[3].token, Token::Z);
         assert_eq!(tokens[4].token, Token::Cnot);
     }
-    
+
     #[test]
     fn test_quantum_ket() {
         let input = "quantum q = |0}";
         let mut lexer = Lexer::new(input);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert_eq!(tokens[0].token, Token::Quantum);
         assert_eq!(tokens[1].token, Token::Identifier("q".to_string()));
         assert_eq!(tokens[2].token, Token::Equal);
         assert_eq!(tokens[3].token, Token::KetState("0".to_string()));
     }
-    
+
     #[test]
     fn test_quantum_states() {
         let input = "|0} |1} |+} |-} |psi}";
         let mut lexer = Lexer::new(input);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert_eq!(tokens[0].token, Token::KetState("0".to_string()));
         assert_eq!(tokens[1].token, Token::KetState("1".to_string()));
         assert_eq!(tokens[2].token, Token::KetState("+".to_string()));
         assert_eq!(tokens[3].token, Token::KetState("-".to_string()));
         assert_eq!(tokens[4].token, Token::KetState("psi".to_string()));
     }
-    
+
     #[test]
     fn test_bra_notation() {
         let input = "{0| {1| {psi|";
         let mut lexer = Lexer::new(input);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert_eq!(tokens[0].token, Token::BraState("0".to_string()));
         assert_eq!(tokens[1].token, Token::BraState("1".to_string()));
         assert_eq!(tokens[2].token, Token::BraState("psi".to_string()));
     }
-    
+
     #[test]
     fn test_operators() {
         let input = "a + b - c * d / e % f";
         let mut lexer = Lexer::new(input);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert_eq!(tokens[1].token, Token::Plus);
         assert_eq!(tokens[3].token, Token::Minus);
         assert_eq!(tokens[5].token, Token::Star);
         assert_eq!(tokens[7].token, Token::Slash);
         assert_eq!(tokens[9].token, Token::Percent);
     }
-    
+
     #[test]
     fn test_tensor_product() {
         let input = "q1 *** q2";
         let mut lexer = Lexer::new(input);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert_eq!(tokens[0].token, Token::Identifier("q1".to_string()));
         assert_eq!(tokens[1].token, Token::TensorProduct);
         assert_eq!(tokens[2].token, Token::Identifier("q2".to_string()));
     }
-    
+
     #[test]
     fn test_star_vs_tensor_product() {
         let input = "a * b *** c";
         let mut lexer = Lexer::new(input);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert_eq!(tokens[1].token, Token::Star);
         assert_eq!(tokens[3].token, Token::TensorProduct);
     }
-    
+
     #[test]
     fn test_comparison_operators() {
         let input = "== != < > <= >=";
         let mut lexer = Lexer::new(input);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert_eq!(tokens[0].token, Token::EqualEqual);
         assert_eq!(tokens[1].token, Token::NotEqual);
         assert_eq!(tokens[2].token, Token::Less);
@@ -1090,13 +1195,13 @@ mod tests {
         assert_eq!(tokens[4].token, Token::LessEqual);
         assert_eq!(tokens[5].token, Token::GreaterEqual);
     }
-    
+
     #[test]
     fn test_arrows_and_special() {
         let input = "-> => :: .. ..= ?. |> =>> ||";
         let mut lexer = Lexer::new(input);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert_eq!(tokens[0].token, Token::Arrow);
         assert_eq!(tokens[1].token, Token::FatArrow);
         assert_eq!(tokens[2].token, Token::DoubleColon);
@@ -1107,14 +1212,14 @@ mod tests {
         assert_eq!(tokens[7].token, Token::PipeDouble);
         assert_eq!(tokens[8].token, Token::DoublePipe);
     }
-    
+
     #[test]
     #[allow(clippy::approx_constant)]
     fn test_numbers() {
         let input = "42 3.14 2.5e10 1.0e-5";
         let mut lexer = Lexer::new(input);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert_eq!(tokens[0].token, Token::IntLiteral(42));
         assert_eq!(tokens[1].token, Token::FloatLiteral(3.14));
         assert!(matches!(tokens[2].token, Token::FloatLiteral(_)));
@@ -1126,9 +1231,15 @@ mod tests {
         let input = "let x = 10 // this is a comment\nlet y = 20";
         let mut lexer = Lexer::new(input);
         let tokens = lexer.tokenize().unwrap();
+
+        // Should have: Let, Identifier, Equal, IntLiteral, Newline, Let, Identifier, Equal, IntLiteral
         assert!(tokens.iter().any(|t| matches!(t.token, Token::Let)));
-        assert!(tokens.iter().any(|t| matches!(t.token, Token::IntLiteral(10))));
-        assert!(tokens.iter().any(|t| matches!(t.token, Token::IntLiteral(20))));
+        assert!(tokens
+            .iter()
+            .any(|t| matches!(t.token, Token::IntLiteral(10))));
+        assert!(tokens
+            .iter()
+            .any(|t| matches!(t.token, Token::IntLiteral(20))));
     }
 
     #[test]
@@ -1136,9 +1247,13 @@ mod tests {
         let input = "let x = 10 /* this is a\nmultiline comment */ let y = 20";
         let mut lexer = Lexer::new(input);
         let tokens = lexer.tokenize().unwrap();
-        
-        assert!(tokens.iter().any(|t| matches!(t.token, Token::IntLiteral(10))));
-        assert!(tokens.iter().any(|t| matches!(t.token, Token::IntLiteral(20))));
+
+        assert!(tokens
+            .iter()
+            .any(|t| matches!(t.token, Token::IntLiteral(10))));
+        assert!(tokens
+            .iter()
+            .any(|t| matches!(t.token, Token::IntLiteral(20))));
     }
 
     #[test]
@@ -1146,7 +1261,7 @@ mod tests {
         let input = "2 ^ 3";
         let mut lexer = Lexer::new(input);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert_eq!(tokens[0].token, Token::IntLiteral(2));
         assert_eq!(tokens[1].token, Token::Caret);
         assert_eq!(tokens[2].token, Token::IntLiteral(3));
@@ -1157,9 +1272,8 @@ mod tests {
         let input = "if True:\n    let x = 10\n    let y = 20";
         let mut lexer = Lexer::new(input);
         let tokens = lexer.tokenize().unwrap();
-        
+
         assert!(tokens.iter().any(|t| matches!(t.token, Token::Indent)));
         assert!(tokens.iter().any(|t| matches!(t.token, Token::Dedent)));
     }
 }
-
