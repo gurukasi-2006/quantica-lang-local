@@ -6,13 +6,13 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::string::String;
 
-// --- ADD THESE IMPORTS ---
+
 use crate::lexer::Lexer;
 use crate::parser::ast::ImportPath;
 use crate::parser::ast::Loc;
 use crate::parser::Parser;
 use std::fs;
-// --- END ADDED IMPORTS ---
+use crate::error::{find_similar_names, levenshtein_distance};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeInfo {
@@ -788,13 +788,40 @@ impl TypeChecker {
                     _ => Err("Type Error: Assignment target must be an identifier or subscript expression.".to_string())
                 }
             }
-            ASTNode::Identifier { name, loc } => match env.borrow().get(name) {
-                Some(info) => Ok(info.var_type.clone()),
-                Option::None => Err(format!(
-                    "Type Error at {}: Undefined variable '{}'",
-                    loc, name
-                )),
-            },
+            ASTNode::Identifier { name, loc } => {
+                match env.borrow().get(name) {
+                    Some(info) => Ok(info.var_type.clone()),
+                    None => {
+                        // Collect all available variable names for suggestions
+                        let mut all_names = Vec::new();
+                        let mut current_env = Some(env.clone());
+
+                        while let Some(env_rc) = current_env {
+                            let env_ref = env_rc.borrow();
+                            for var_name in env_ref.store.keys() {
+                                all_names.push(var_name.clone());
+                            }
+                            current_env = env_ref.outer.clone();
+                        }
+
+                        // Find similar names
+                        let suggestions = find_similar_names(name, &all_names);
+
+                        let mut error_msg = format!("Undefined variable '{}'", name);
+                        if !suggestions.is_empty() {
+                            error_msg.push_str(&format!(
+                                ". Did you mean: {}?",
+                                suggestions.join(", ")
+                            ));
+                        }
+
+                        Err(format!(
+                            "Type Error at {}: {}",
+                            loc, error_msg
+                        ))
+                    }
+                }
+            }
             ASTNode::ClassDeclaration { name, fields, methods, constructor, .. } => {
                 // Register class type
                 let class_type = Type::Class(name.clone());
