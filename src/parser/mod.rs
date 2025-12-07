@@ -774,8 +774,11 @@ impl Parser {
                 let field_name_loc = self.expect_identifier()?;
                 let field_name = self.extract_identifier_name(&field_name_loc)?;
 
-                self.expect(&Token::Colon)?;
-                let field_type = self.parse_type()?;
+                let field_type = if self.match_token(&Token::Colon) {
+                    self.parse_type()?
+                } else {
+                    Type::Any  // Infer type as Any if not specified
+                };
 
                 let default_value = if self.match_token(&Token::Equal) {
                     Some(Box::new(self.parse_expression()?))
