@@ -5,11 +5,15 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::string::String;
+
+// --- ADD THESE IMPORTS ---
 use crate::lexer::Lexer;
 use crate::parser::ast::ImportPath;
 use crate::parser::ast::Loc;
 use crate::parser::Parser;
 use std::fs;
+// --- END ADDED IMPORTS ---
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeInfo {
     pub var_type: Type,
@@ -1852,6 +1856,8 @@ impl TypeChecker {
                 Self::check(catch_block, env, expected_return_type)?;
                 Ok(Type::None)
             }
+            ASTNode::Break => Ok(Type::None),
+            ASTNode::Continue => Ok(Type::None),
 
             _ => Err(format!(
                 "Type checking is not implemented for this node: {:?}",
