@@ -9,6 +9,8 @@ mod parser;
 mod runtime;
 mod type_checker;
 mod error;
+mod error_bridge;
+mod error_codes;
 
 mod hardware_integration;
 mod quantum_backend;
@@ -40,6 +42,7 @@ use std::path::Path;
 use std::time::Instant;
 use crate::error::{ErrorReporter, Diagnostic,ErrorCategory};
 use crate::parser::ast::Loc;
+use crate::error_bridge::report_string_error;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum CompilationTarget {
@@ -336,7 +339,7 @@ fn compile_file(filename: &str, show_ast: bool, show_tokens: bool, verbose: bool
     }
 
     // Create error reporter
-    let reporter = ErrorReporter::new(&source, filename);
+    let _reporter = ErrorReporter::new(&source, filename);
 
     // Lexical Analysis
     if verbose {
@@ -344,21 +347,9 @@ fn compile_file(filename: &str, show_ast: bool, show_tokens: bool, verbose: bool
     }
     let mut lexer = Lexer::new(&source);
     let tokens = match lexer.tokenize() {
-        Ok(t) => {
-            if verbose {
-                println!("✓ Lexer succeeded! {} tokens\n", t.len());
-            }
-            t
-        }
+        Ok(t) => t,
         Err(e) => {
-            let loc = parse_error_location(&e).unwrap_or(Loc { line: 1, column: 1 });
-
-            let diag = Diagnostic::error(loc, ErrorCategory::Syntax, &e)
-                .with_code("E001")
-                .with_hint("Check for unclosed strings, invalid characters, or unterminated comments.")
-                .with_docs("https://quantica.dev/docs/errors/E001");
-
-            reporter.report(&diag);
+            report_string_error(e, &source, filename);
             std::process::exit(1);
         }
     };
@@ -379,38 +370,9 @@ fn compile_file(filename: &str, show_ast: bool, show_tokens: bool, verbose: bool
     }
     let mut parser = Parser::new(tokens);
     let ast = match parser.parse() {
-        Ok(tree) => {
-            if verbose {
-                println!("✓ Parser succeeded!\n");
-            }
-            tree
-        }
+        Ok(tree) => tree,
         Err(e) => {
-            let loc = parse_error_location(&e).unwrap_or(Loc { line: 1, column: 1 });
-
-            // Extract the actual error message
-            let clean_msg = if let Some(idx) = e.find("]: ") {
-                &e[idx + 3..]
-            } else {
-                &e
-            };
-
-            let mut diag = Diagnostic::error(loc, ErrorCategory::Syntax, clean_msg)
-                .with_code("E002")
-                .with_hint("Check for missing semicolons, parentheses, braces, or colons.");
-
-            // Add specific suggestions based on error type
-            if clean_msg.contains("Expected Colon") {
-                diag = diag.with_suggestion("Add a colon ':' for type annotation or after control flow statements.");
-            } else if clean_msg.contains("Expected LeftParen") {
-                diag = diag.with_suggestion("Function calls require parentheses '()' even if there are no arguments.");
-            } else if clean_msg.contains("Unexpected EOF") {
-                diag = diag.with_suggestion("You may have an unclosed block or missing 'return' statement.");
-            }
-
-            diag = diag.with_docs("https://quantica.dev/docs/errors/E002");
-
-            reporter.report(&diag);
+            report_string_error(e, &source, filename);
             std::process::exit(1);
         }
     };
@@ -420,45 +382,9 @@ fn compile_file(filename: &str, show_ast: bool, show_tokens: bool, verbose: bool
     }
 
     match TypeChecker::check_program(&ast) {
-        Ok(()) => {
-            if verbose {
-                println!("✓ Type check succeeded!\n");
-            }
-        }
+        Ok(()) => {},
         Err(e) => {
-            let loc = parse_error_location(&e).unwrap_or(Loc { line: 1, column: 1 });
-
-            let clean_msg = if let Some(idx) = e.find("]: ") {
-                &e[idx + 3..]
-            } else {
-                &e
-            };
-
-            let mut diag = Diagnostic::error(loc, ErrorCategory::Type, clean_msg)
-                .with_code("E003");
-
-            // Intelligent suggestions based on error content
-            if clean_msg.contains("Undefined variable") {
-                let var_name = extract_variable_name(clean_msg);
-                diag = diag
-                    .with_hint("This variable was not declared in the current scope.")
-                    .with_suggestion(&format!(
-                        "Did you mean to declare it? Try: 'let {} = ...' or 'mut {} = ...'",
-                        var_name, var_name
-                    ));
-            } else if clean_msg.contains("Mismatched types") {
-                diag = diag
-                    .with_hint("The types don't match. You may need to convert one type to another.")
-                    .with_suggestion("Use type conversion functions: to_int(), to_float(), to_string()");
-            } else if clean_msg.contains("Cannot call method") {
-                diag = diag
-                    .with_hint("This type doesn't have the method you're trying to call.")
-                    .with_suggestion("Check the type's available methods in the documentation.");
-            }
-
-            diag = diag.with_docs("https://quantica.dev/docs/errors/E003");
-
-            reporter.report(&diag);
+            report_string_error(e, &source, filename);
             std::process::exit(1);
         }
     }
@@ -487,39 +413,15 @@ fn compile_file(filename: &str, show_ast: bool, show_tokens: bool, verbose: bool
     let duration = start_time.elapsed();
 
     println!("{:-<60}", "");
-    println!("⏱️  Interpreter Time: {:.6} seconds", duration.as_secs_f64());
+    println!("Interpreter Time: {:.6} seconds", duration.as_secs_f64());
 
     match evaluation_result {
         Ok(_) => {
             println!("✓ Execution successful!");
         }
+        Ok(_) => println!("✓ Execution successful!"),
         Err(e) => {
-            let loc = parse_error_location(&e).unwrap_or(Loc { line: 1, column: 1 });
-
-            let clean_msg = if let Some(idx) = e.find("]: ") {
-                &e[idx + 3..]
-            } else {
-                &e
-            };
-
-            let mut diag = Diagnostic::error(loc, ErrorCategory::Runtime, clean_msg)
-                .with_code("E004")
-                .with_hint("This error occurred while your program was running.");
-
-            // Runtime-specific suggestions
-            if clean_msg.contains("division by zero") {
-                diag = diag.with_suggestion("Add a check: 'if denominator != 0: ...'");
-            } else if clean_msg.contains("index out of bounds") {
-                diag = diag.with_suggestion("Check array length before accessing: 'if index < len(array): ...'");
-            } else if clean_msg.contains("Assertion Failed") {
-                diag = diag
-                    .with_hint("An assertion in your code failed.")
-                    .with_suggestion("Review the assertion condition and the actual values being tested.");
-            }
-
-            diag = diag.with_docs("https://quantica.dev/docs/errors/E004");
-
-            reporter.report(&diag);
+            report_string_error(e, &source, filename);  // <- Changed this line
             std::process::exit(1);
         }
     }
