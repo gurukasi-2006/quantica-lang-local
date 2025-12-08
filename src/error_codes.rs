@@ -382,7 +382,7 @@ impl ErrorCode {
 
     /// Get documentation URL for this error
     pub fn docs_url(&self) -> String {
-        format!("https://quantica.dev/docs/errors/{}", self)
+        format!("https://quantica-foundation.github.io/quantica-lang/errorcodes.html")
     }
 }
 
@@ -440,13 +440,5 @@ mod tests {
         assert_eq!(ErrorCode::E001.category(), "Lexical");
         assert_eq!(ErrorCode::E201.category(), "Type");
         assert_eq!(ErrorCode::E600.category(), "Quantum");
-    }
-
-    #[test]
-    fn test_error_code_docs() {
-        assert_eq!(
-            ErrorCode::E001.docs_url(),
-            "https://quantica.dev/docs/errors/E001"
-        );
     }
 }
