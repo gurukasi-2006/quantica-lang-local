@@ -168,7 +168,6 @@ pub enum ErrorCode {
 }
 
 impl ErrorCode {
-    /// Get the category name for this error code
     pub fn category(&self) -> &'static str {
         match *self as u32 {
             1..=99 => "Lexical",
@@ -184,7 +183,6 @@ impl ErrorCode {
         }
     }
 
-    /// Get a short description of this error
     pub fn description(&self) -> &'static str {
         match self {
             // Lexical
@@ -338,8 +336,8 @@ impl ErrorCode {
         }
     }
 
-    /// Get a hint for resolving this error
-    pub fn hint(&self) -> Option<&'static str> {
+    ///hint
+    pub fn hint(&sel for resolving this errorf) -> Option<&'static str> {
         match self {
             ErrorCode::E001 => Some("Make sure all string literals are properly closed with matching quotes"),
             ErrorCode::E003 => Some("Multi-line comments must be closed with */"),
@@ -361,7 +359,7 @@ impl ErrorCode {
         }
     }
 
-    /// Get a suggestion for fixing this error
+    ///suggestion
     pub fn suggestion(&self) -> Option<&'static str> {
         match self {
             ErrorCode::E001 => Some("Add a closing quote: \"your string\""),
@@ -380,7 +378,7 @@ impl ErrorCode {
         }
     }
 
-    /// Get documentation URL for this error
+    ///documentation URL
     pub fn docs_url(&self) -> String {
         format!("https://quantica-foundation.github.io/quantica-lang/errorcodes.html")
     }
@@ -392,7 +390,7 @@ impl fmt::Display for ErrorCode {
     }
 }
 
-/// Helper function to create common error patterns
+///common error patterns
 pub mod patterns {
     use super::ErrorCode;
 
