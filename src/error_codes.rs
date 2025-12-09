@@ -337,7 +337,7 @@ impl ErrorCode {
     }
 
     ///hint
-    pub fn hint(&sel for resolving this errorf) -> Option<&'static str> {
+    pub fn hint(&self) -> Option<&'static str> {
         match self {
             ErrorCode::E001 => Some("Make sure all string literals are properly closed with matching quotes"),
             ErrorCode::E003 => Some("Multi-line comments must be closed with */"),
