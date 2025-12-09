@@ -18,8 +18,6 @@ pub fn parse_error_location(error_msg: &str) -> Loc {
             }
         }
     }
-
-    // Also try parsing "at line X, column Y" format
     if let Some(line_pos) = error_msg.find("line ") {
         let rest = &error_msg[line_pos + 5..];
         if let Some(comma_pos) = rest.find(',') {
@@ -43,12 +41,12 @@ pub fn parse_error_location(error_msg: &str) -> Loc {
 pub fn detect_error_code(error_msg: &str) -> ErrorCode {
     let msg_lower = error_msg.to_lowercase();
 
-    // Syntax errors - check these FIRST before lexical
+    // Syntax errors
     if msg_lower.contains("unexpected token") {
         return ErrorCode::E100;
     }
 
-    // Check for specific token expectation errors
+    //token expectation errors
     if msg_lower.contains("expected") && (msg_lower.contains("found") || msg_lower.contains("but")) {
         // Check for specific delimiters
         if msg_lower.contains("colon") || msg_lower.contains("':'") {
@@ -74,8 +72,6 @@ pub fn detect_error_code(error_msg: &str) -> ErrorCode {
         }
         return ErrorCode::E101;
     }
-
-    // Check for "unexpected" followed by token names
     if msg_lower.contains("unexpected") {
         if msg_lower.contains("rightparen") || (msg_lower.contains(")") && !msg_lower.contains("expected")) {
             return ErrorCode::E104;
@@ -215,7 +211,7 @@ pub fn detect_error_code(error_msg: &str) -> ErrorCode {
         return ErrorCode::E801;
     }
 
-    // Default - check for general error types
+    //general error types
     if msg_lower.contains("runtime error") {
         ErrorCode::E308
     } else if msg_lower.contains("type error") {
@@ -229,7 +225,6 @@ pub fn detect_error_code(error_msg: &str) -> ErrorCode {
     }
 }
 
-/// Convert ErrorCode to ErrorCategory
 fn error_code_to_category(code: ErrorCode) -> ErrorCategory {
     match code as u32 {
         1..=10 => ErrorCategory::Syntax,      // Lexical errors (E001-E010)
@@ -249,8 +244,6 @@ pub fn string_to_diagnostic(error: String) -> Diagnostic {
     let loc = parse_error_location(&error);
     let code = detect_error_code(&error);
     let category = error_code_to_category(code);
-
-    // Extract just the message part (remove "Error at [Line X, Col Y]: " prefix)
     let message = if let Some(pos) = error.find("]: ") {
         &error[pos + 3..]
     } else if let Some(pos) = error.find(": ") {
@@ -261,26 +254,25 @@ pub fn string_to_diagnostic(error: String) -> Diagnostic {
 
     let mut diagnostic = Diagnostic::error(loc, category, message);
 
-    // Add error code
+
     diagnostic.code = Some(format!("{}", code));
 
-    // Add hint if available
+
     if let Some(hint) = code.hint() {
         diagnostic.hint = Some(hint.to_string());
     }
 
-    // Add suggestion if available
     if let Some(suggestion) = code.suggestion() {
         diagnostic.suggestion = Some(suggestion.to_string());
     }
 
-    // Add documentation URL
+
     diagnostic.documentation_url = Some(code.docs_url());
 
     diagnostic
 }
 
-/// Print a String error with nice formatting
+
 pub fn report_string_error(error: String, source_code: &str, filename: &str) {
     let diagnostic = string_to_diagnostic(error);
     let reporter = ErrorReporter::new(source_code, filename);
@@ -293,7 +285,7 @@ mod tests {
 
     #[test]
     fn test_error_detection() {
-        // Test various error patterns
+
         assert_eq!(
             detect_error_code("Unterminated string literal at line 5"),
             ErrorCode::E001
