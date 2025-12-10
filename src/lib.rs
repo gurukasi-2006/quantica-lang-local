@@ -22,3 +22,4 @@ pub use graphics_runtime::*;
 pub mod error;
 pub mod error_codes;
 pub mod error_bridge;
+pub mod qubit_lifecycle;

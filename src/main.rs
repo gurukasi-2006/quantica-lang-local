@@ -9,8 +9,9 @@ mod parser;
 mod runtime;
 mod type_checker;
 mod error;
-mod error_bridge;
 mod error_codes;
+mod error_bridge;
+mod qubit_lifecycle;
 
 mod hardware_integration;
 mod quantum_backend;
@@ -18,6 +19,7 @@ mod graphics;
 mod graphics_runtime;
 use hardware_integration::{parse_hardware_config, HardwareExecutor};
 use quantum_backend::QuantumConfig;
+use crate::qubit_lifecycle::QubitLifecycleManager;
 
 use crate::codegen::Compiler;
 use crate::doc_generator::DocGenerator;
@@ -40,9 +42,9 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 use std::time::Instant;
+use crate::error_bridge::report_string_error;
 use crate::error::{ErrorReporter, Diagnostic,ErrorCategory};
 use crate::parser::ast::Loc;
-use crate::error_bridge::report_string_error;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum CompilationTarget {
@@ -66,22 +68,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut target = CompilationTarget::HostCPU;
     let mut hardware_config: Option<QuantumConfig> = None;
     let mut list_devices = false;
+    let mut enable_lifecycle_checking = true;
 
-    // FIRST: Check for hardware mode and parse config
     if args.contains(&"--hardware".to_string()) {
         hardware_config = parse_hardware_config(&args);
     }
+    for arg in &args {
+        if arg == "--no-lifecycle" {
+            enable_lifecycle_checking = false;
+        }
+    }
 
-    // THEN: Parse other flags
+    if enable_lifecycle_checking {
+        println!("✓ Qubit lifecycle checking enabled");
+    } else {
+        println!("⚠️ Qubit lifecycle checking disabled");
+    }
+
+
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
             "--hardware" => {
-                // Skip --hardware and its value (already parsed)
+
                 i += 2;
             }
             "--device" | "--shots" | "--api-token" => {
-                // Skip hardware-specific flags and their values
+
                 i += 2;
             }
             "--no-optimize" => {
@@ -138,13 +151,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 i += 1;
             }
             _ => {
-                // Skip other args for now
+
                 i += 1;
             }
         }
     }
 
-    // FINALLY: Extract filename using the helper function
     let filename = hardware_integration::extract_filename(&args);
 
     if list_devices {
@@ -177,8 +189,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::process::exit(1);
         }
     }
-
-    // ... rest of your main() function continues as before ...
 
     if command.is_none() && filename.is_none() {
         println!("Starting REPL mode (type '.quit' to exit, '.clear' to reset).");
@@ -338,7 +348,7 @@ fn compile_file(filename: &str, show_ast: bool, show_tokens: bool, verbose: bool
         println!("{:-<60}\n", "");
     }
 
-    // Create error reporter
+
     let _reporter = ErrorReporter::new(&source, filename);
 
     // Lexical Analysis
@@ -396,12 +406,14 @@ fn compile_file(filename: &str, show_ast: bool, show_tokens: bool, verbose: bool
         println!("============================\n");
     }
 
-    // INTERPRETATION (EVALUATION)
     if verbose {
         println!("✨ Phase 3: Interpretation");
     }
 
     let env = std::rc::Rc::new(std::cell::RefCell::new(Environment::new()));
+
+
+    let mut lifecycle = QubitLifecycleManager::new(true); // strict mode enabled
 
     if verbose {
         println!("Program Output:");
@@ -409,7 +421,10 @@ fn compile_file(filename: &str, show_ast: bool, show_tokens: bool, verbose: bool
     }
 
     let start_time = Instant::now();
-    let evaluation_result = Evaluator::evaluate_program(&ast, &env);
+
+
+    let evaluation_result = Evaluator::evaluate_program_with_lifecycle(&ast, &env, &mut lifecycle);
+
     let duration = start_time.elapsed();
 
     println!("{:-<60}", "");
@@ -418,16 +433,19 @@ fn compile_file(filename: &str, show_ast: bool, show_tokens: bool, verbose: bool
     match evaluation_result {
         Ok(_) => {
             println!("✓ Execution successful!");
+
+            if verbose {
+                println!("\n=== Qubit Lifecycle Summary ===");
+                lifecycle.print_summary();
+            }
         }
-        Ok(_) => println!("✓ Execution successful!"),
         Err(e) => {
-            report_string_error(e, &source, filename);  // <- Changed this line
+            report_string_error(e, &source, filename);
             std::process::exit(1);
         }
     }
 }
 
-// Helper function to extract variable name from error message
 fn extract_variable_name(msg: &str) -> String {
     if let Some(start) = msg.find('\'') {
         if let Some(end) = msg[start + 1..].find('\'') {
@@ -571,7 +589,7 @@ fn compile_file_llvm(
     let hlo_ir = compiler.export_to_hlo_ir(module_name)?;
     println!("   -> XLA/HLO IR Exported");
 
-    // --- LLVM IR Dump
+    // LLVM IR Dump
     if emit_llvm {
         println!("\n--- GENERATED LLVM IR (Optimized) ---");
         compiler.dump_ir();
@@ -694,7 +712,6 @@ fn run_jit_file(
     println!("✨ Program Output:");
     println!();
 
-    // Flush stdout BEFORE executing JIT code
     use std::io::Write;
     let _ = std::io::stdout().flush();
 
@@ -770,11 +787,10 @@ fn run_test_suite() {
     println!("{:-<60}", "");
 
     if failed_count > 0 {
-        std::process::exit(1); // Exit with error if any test failed
+        std::process::exit(1);
     }
 }
 
-/// Runs the full pipeline on a single file, returning a Result.
 fn run_test_file(filename: &str) -> Result<(), String> {
     //Read source
     let source = fs::read_to_string(filename)
@@ -796,9 +812,8 @@ fn run_test_file(filename: &str) -> Result<(), String> {
     //Interpretation (Evaluation)
     let env = std::rc::Rc::new(std::cell::RefCell::new(Environment::new()));
     Evaluator::register_builtins(&env);
-    Evaluator::evaluate_program(&ast, &env).map_err(|e| format!("Runtime Error: {}", e))?; // assert() failure will be caught here
+    Evaluator::evaluate_program(&ast, &env).map_err(|e| format!("Runtime Error: {}", e))?;
 
-    //If all steps passed:
     Ok(())
 }
 
@@ -966,7 +981,7 @@ fn print_ast(node: &ASTNode, indent: usize) {
         } => {
             println!("{}Apply ({} args):", prefix, arguments.len());
             println!("{}  Gate:", prefix);
-            print_ast(gate_expr, indent + 2); // Print the gate expression
+            print_ast(gate_expr, indent + 2);
             println!("{}  Args:", prefix);
             for arg in arguments {
                 print_ast(arg, indent + 2);
@@ -1216,11 +1231,8 @@ fn run_lexer_only(filename: &str) {
 }
 
 fn run_repl() {
-    // Create persistent environments for the *entire session*
     let runtime_env = std::rc::Rc::new(std::cell::RefCell::new(Environment::new()));
     let type_env = std::rc::Rc::new(std::cell::RefCell::new(TypeEnvironment::new()));
-
-    // Prefill the type environment just once
     TypeChecker::prefill_environment(&type_env);
     Evaluator::register_builtins(&runtime_env);
 
@@ -1253,14 +1265,11 @@ fn run_repl() {
                 continue;
             }
         }
-
-        //  Append to buffer
         source_buffer.push_str(&line);
         if source_buffer.trim().is_empty() {
             continue;
         }
 
-        // Try to compile the buffer
 
         // Lexer
         let mut lexer = Lexer::new(&source_buffer);
@@ -1272,7 +1281,6 @@ fn run_repl() {
                 continue;
             }
             Err(e) => {
-                // Real lexer error, report and reset
                 println!("Lexer Error: {}", e);
                 source_buffer.clear();
                 is_continuation = false;
@@ -1301,34 +1309,29 @@ fn run_repl() {
             }
         };
 
-        //complete AST. Process it statement by statement.
+
         if let ASTNode::Program(statements) = ast {
             for stmt in statements {
                 //Type Check the single statement
                 let type_check_result = TypeChecker::check(&stmt, &type_env, None);
                 if let Err(e) = type_check_result {
                     println!("Type Error: {}", e);
-                    // Don't execute if type check fails
                     break;
                 }
 
-                //  Evaluate the single statement
                 let eval_result = Evaluator::evaluate(&stmt, &runtime_env);
                 match eval_result {
                     Ok(RuntimeValue::None) => { /* Don't print None */ }
                     Ok(value) => {
-                        println!("{}", value); // Print result
+                        println!("{}", value);
                     }
                     Err(e) => {
                         println!("Runtime Error: {}", e);
-                        // Stop processing this block
                         break;
                     }
                 }
             }
         }
-
-        // Clear buffer and reset prompt for next input
         source_buffer.clear();
         is_continuation = false;
     }
