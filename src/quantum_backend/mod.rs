@@ -10,7 +10,7 @@ mod cirq_local;
 use cirq_local::CirqLocalBackend;
 
 // Import the new native backend
-mod native_simulator;
+pub mod native_simulator;
 use native_simulator::NativeBackend;
 
 /// Supported quantum hardware providers
@@ -349,4 +349,5 @@ mod tests {
         assert!(*count_00 > 400 && *count_00 < 600);
         assert!(*count_11 > 400 && *count_11 < 600);
     }
+
 }
