@@ -803,27 +803,37 @@ fn run_test_suite() {
 }
 
 fn run_test_file(filename: &str) -> Result<(), String> {
-    //Read source
+    // 1. Read source
     let source = fs::read_to_string(filename)
         .map_err(|e| format!("Failed to read file '{}': {}", filename, e))?;
 
-    // Lexical Analysis
+    // 2. Lexical Analysis
     let mut lexer = Lexer::new(&source);
     let tokens = lexer
         .tokenize()
         .map_err(|e| format!("Lexer error: {}", e))?;
 
-    // Syntax Analysis (Parsing)
+    // 3. Syntax Analysis (Parsing)
     let mut parser = Parser::new(tokens);
     let ast = parser.parse().map_err(|e| format!("Parser error: {}", e))?;
 
-    // Type Checking
+    // 4. Type Checking
     TypeChecker::check_program(&ast).map_err(|e| format!("Type error: {}", e))?;
 
-    //Interpretation (Evaluation)
+    // 5. Interpretation (Hybrid Engine)
     let env = std::rc::Rc::new(std::cell::RefCell::new(Environment::new()));
     Evaluator::register_builtins(&env);
-    Evaluator::evaluate_program(&ast, &env).map_err(|e| format!("Runtime Error: {}", e))?;
+
+    let mut lifecycle = QubitLifecycleManager::new(true);
+    let total_qubits = count_total_qubits(&ast);
+    let mut simulator = NativeSimulator::new(total_qubits);
+
+    Evaluator::evaluate_program_with_lifecycle(
+        &ast,
+        &env,
+        &mut lifecycle,
+        &mut simulator
+    ).map_err(|e| format!("Runtime Error: {}", e))?;
 
     Ok(())
 }

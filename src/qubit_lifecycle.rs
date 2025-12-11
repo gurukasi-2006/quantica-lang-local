@@ -242,7 +242,7 @@ impl QubitLifecycleManager {
                 loc,
             }),
 
-
+            /*
             (QubitState::Entangled(entangled_set), QubitOperation::ApplyGate(gate_name))
                 if self.strict_mode =>
             {
@@ -252,7 +252,7 @@ impl QubitLifecycleManager {
                     operation: gate_name.clone(),
                     loc,
                 })
-            }
+            }*/
 
 
             _ => Ok(()),

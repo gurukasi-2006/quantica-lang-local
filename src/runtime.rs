@@ -1,4 +1,4 @@
-// src/runtime.rs
+/* src/runtime.rs */
 
 use crate::environment::GateDefinition;
 use crate::environment::{Environment, RuntimeValue};
@@ -19,9 +19,12 @@ pub extern "C" fn quantica_rt_new_state(num_qubits: c_int) -> StatePtr {
     let mut state_map: HashMap<usize, (f64, f64)> = HashMap::new();
     state_map.insert(0, (1.0, 0.0));
 
+
     let register = RuntimeValue::QuantumRegister {
         state: Rc::new(RefCell::new(state_map)),
         size: num_qubits as usize,
+        register_name: "runtime_reg".to_string(),
+        global_start_index: None,
     };
 
     let boxed_register = Box::new(register);
@@ -35,21 +38,35 @@ pub extern "C" fn quantica_rt_measure(state_ptr: StatePtr, qubit_index: c_int) -
         return -1;
     }
 
+
     let register = unsafe { &*(state_ptr as *mut RuntimeValue) };
 
     match register {
-        RuntimeValue::QuantumRegister { state, size } => {
+
+        RuntimeValue::QuantumRegister { state, size, .. } => {
+            let idx = qubit_index as usize;
+            if idx >= *size {
+                eprintln!("(Runtime Error) Qubit index {} out of bounds (size {}).", idx, size);
+                return -1;
+            }
+
+
+
             let qubit_handle = RuntimeValue::Qubit {
                 state: state.clone(),
-                index: qubit_index as usize,
+                index: idx,
                 size: *size,
+                register_name: "runtime_reg".to_string(),
+                global_index: None,
             };
 
-            let result = Evaluator::builtin_measure(vec![qubit_handle]);
 
-            match result {
-                Ok(RuntimeValue::Int(r)) => r as c_int,
-                Ok(_) => -2,
+
+            let args = vec![qubit_handle];
+
+            match Evaluator::builtin_measure(args) {
+                Ok(RuntimeValue::Int(val)) => val as c_int,
+                Ok(_) => -1,
                 Err(e) => {
                     eprintln!("(Runtime Error) Measurement failed: {}", e);
                     -1
@@ -134,8 +151,8 @@ pub extern "C" fn quantica_rt_debug_state(state_ptr: StatePtr) {
 
     let register = unsafe { &*(state_ptr as *mut RuntimeValue) };
 
-    // 2. Check the type
-    if let RuntimeValue::QuantumRegister { state, size } = register {
+
+    if let RuntimeValue::QuantumRegister { state, size,.. } = register {
         println!("(Quantum Runtime) Debugging state ({} qubits):", size);
         Evaluator::print_quantum_state(state, *size, 10);
     } else {
@@ -188,14 +205,14 @@ unsafe fn apply_gate_unsafe(
     }
     let register = &*(state_ptr as *mut RuntimeValue);
     let (state_rc, reg_size) = match register {
-        RuntimeValue::QuantumRegister { state, size } => (state.clone(), *size),
+        RuntimeValue::QuantumRegister { state, size ,..} => (state.clone(), *size),
         _ => return Err("Invalid state pointer passed to apply_gate.".to_string()),
     };
 
     let gate_name_cstr = CStr::from_ptr(gate_name_ptr);
     let gate_name = gate_name_cstr.to_str().unwrap_or("").to_string();
 
-    // 3. Unwrap Dagger Flag
+
     let is_dagger = is_dagger_int != 0;
 
     let params: Vec<f64> = if params_ptr.is_null() {

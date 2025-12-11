@@ -1,4 +1,4 @@
-// src/environment/mod.rs
+/* src/environment/mod.rs */
 use crate::parser::ast::Parameter;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -9,17 +9,17 @@ use crate::parser::ast::ASTNode;
 
 #[derive(Debug, Clone)]
 pub struct GateDefinition {
-    // The base gate name, e.g., "x", "u", "cnot"
+
     pub name: String,
-    // The parameters, e.g., [theta, phi, lambda] for U gate
+
     pub params: Vec<f64>,
-    // The list of control qubit indices
+
     pub controls: Vec<usize>,
-    // The list of target qubit indices
+
     pub targets: Vec<usize>,
-    // The total number of qubits in the register
+
     pub register_size: usize,
-    // A shared pointer to the state vector
+
     pub state_rc: Rc<RefCell<HashMap<usize, (f64, f64)>>>,
 }
 
@@ -31,27 +31,31 @@ pub enum RuntimeValue {
     Bool(bool),
     None,
 
-    // A handle to a specific qubit within a register
-    // It holds a shared pointer to the register's state vector
+
+
     Qubit {
-        // A shared pointer to the register's SPARSE state
+
         state: Rc<RefCell<HashMap<usize, (f64, f64)>>>,
-        index: usize, // This qubit's index
-        size: usize,  // The total size of its register
+        index: usize,
+        size: usize,
+        register_name: String,
+        global_index: Option<usize>,
     },
 
-    // --- THIS IS THE UPDATED REGISTER DEFINITION ---
+
     QuantumRegister {
         size: usize,
-        // The state is now a HashMap from basis state (usize) to amplitude
+
         state: Rc<RefCell<HashMap<usize, (f64, f64)>>>,
+        register_name: String,
+        global_start_index: Option<usize>,
     },
 
     Gate {
-        // "s", "x", "u", etc.
+
         base_name: String,
         is_dagger: bool,
-        // Number of controls this expression has added
+
         num_controls: usize,
     },
     Class {
@@ -62,26 +66,26 @@ pub enum RuntimeValue {
         constructor: Option<Box<ASTNode>>,
     },
 
-    // Object instance
+
     Instance {
         class_name: String,
         fields: HashMap<String, Rc<RefCell<RuntimeValue>>>,
         methods: HashMap<String, ClassMethod>,
     },
 
-    Register(Vec<Rc<RefCell<RuntimeValue>>>), // An array
+    Register(Vec<Rc<RefCell<RuntimeValue>>>),
     Dict(HashMap<String, Rc<RefCell<RuntimeValue>>>),
     Range(Vec<i64>),
     KetState(String),
 
-    // A user-defined function
+
     Function {
         parameters: Vec<Parameter>,
         body: Box<crate::parser::ast::ASTNode>,
         env: Rc<RefCell<Environment>>,
     },
 
-    // A built-in Rust function
+
     BuiltinFunction(String),
     Module(Rc<RefCell<Environment>>),
 
@@ -132,12 +136,12 @@ impl std::fmt::Display for RuntimeValue {
             RuntimeValue::Bool(b) => write!(f, "{}", b),
             RuntimeValue::None => write!(f, "None"),
 
-            RuntimeValue::Qubit { index, size, .. } => {
-                write!(f, "<Qubit {} of {}>", index, size)
+            RuntimeValue::Qubit { register_name, index, .. } => {
+                write!(f, "<Qubit {}[{}]>", register_name, index)
             }
 
-            RuntimeValue::QuantumRegister { size, .. } => {
-                write!(f, "<QuantumRegister (size={})>", size)
+            RuntimeValue::QuantumRegister { register_name, size, .. } => {
+                write!(f, "<QuantumRegister {} (size={})>", register_name, size)
             }
             RuntimeValue::Register(elements) => {
                 let parts: Vec<String> =
@@ -156,7 +160,7 @@ impl std::fmt::Display for RuntimeValue {
             RuntimeValue::Instance { class_name, fields, .. } => {
                 write!(f, "<{} instance at {:p}>", class_name, fields)
             }
-            _ => write!(f, "{:?}", self), // Fallback
+            _ => write!(f, "{:?}", self),
         }
     }
 }
