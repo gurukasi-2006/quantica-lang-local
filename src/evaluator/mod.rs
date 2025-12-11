@@ -20,12 +20,14 @@ type C64 = Complex<f64>;
 use crate::graphics::{Canvas, Color, Plot, PlotType};
 use std::sync::Mutex;
 use std::io::Write;
+type QubitMap = HashMap<String, usize>;
 lazy_static::lazy_static! {
     static ref INTERPRETER_CANVASES: Mutex<HashMap<i64, Canvas>> = Mutex::new(HashMap::new());
     static ref INTERPRETER_PLOTS: Mutex<HashMap<i64, Plot>> = Mutex::new(HashMap::new());
     static ref NEXT_ID: Mutex<i64> = Mutex::new(0);
 }
 use crate::qubit_lifecycle::{QubitLifecycleManager, QubitId, QubitOperation, QubitState};
+use crate::quantum_backend::native_simulator::NativeSimulator;
 
 pub struct Evaluator;
 
@@ -848,6 +850,27 @@ impl Evaluator {
                 }
             }
             _ => Err("Internal Error: Invalid ASTNode passed to eval_gate_expression.".to_string()),
+        }
+    }
+
+    fn extract_gate_info_runtime(gate_expr: &ASTNode) -> Result<(String, bool), String> {
+        match gate_expr {
+            ASTNode::Gate { name, .. } => Ok((name.to_lowercase(), false)),
+            ASTNode::ParameterizedGate { name, .. } => Ok((name.to_lowercase(), false)),
+
+            // Toggle dagger flag if we see 'dagger'
+            ASTNode::Dagger { gate_expr, .. } => {
+                let (name, is_dagger) = Self::extract_gate_info_runtime(gate_expr)?;
+                Ok((name, !is_dagger))
+            },
+
+            // Prepend 'c' for controlled gates (e.g. "x" -> "cx")
+            ASTNode::Controlled { gate_expr, .. } => {
+                let (name, is_dagger) = Self::extract_gate_info_runtime(gate_expr)?;
+                Ok((format!("c{}", name), is_dagger))
+            },
+
+            _ => Err("Invalid gate expression".to_string())
         }
     }
 
@@ -2921,84 +2944,88 @@ impl Evaluator {
         INTERPRETER_PLOTS.lock().unwrap().remove(&id);
         Ok(RuntimeValue::None)
     }
-    pub fn evaluate_with_lifecycle(
-        node: &ASTNode,
-        env: &Rc<RefCell<Environment>>,
-        lifecycle: &mut QubitLifecycleManager,
-    ) -> Result<RuntimeValue, String> {
-        match node {
-            ASTNode::Measure(target_expr) => {
-                let target_val = Self::evaluate(target_expr, env)?;
 
-                // Extract qubit ID
-                if let RuntimeValue::Qubit { state, index, .. } = target_val {
-                    // Check lifecycle
-                    let qubit_id = QubitId::new("runtime".to_string(), index);
-                    lifecycle.record_operation(
-                        &qubit_id,
-                        QubitOperation::Measure,
-                        Loc { line: 0, column: 0 }
-                    ).map_err(|e| e.to_string())?;
-                }
-
-                // Perform measurement
-                Self::eval_measure(target_expr, env)
-            }
-            _ => Self::evaluate(node, env)
-        }
-    }
     pub fn evaluate_program_with_lifecycle(
-        program: &ASTNode,
-        env: &Rc<RefCell<Environment>>,
-        lifecycle: &mut QubitLifecycleManager,
-    ) -> Result<RuntimeValue, String> {
-        if let ASTNode::Program(statements) = program {
-            let mut last_result = RuntimeValue::None;
-            for stmt in statements {
-                last_result = Self::evaluate_with_lifecycle_recursive(stmt, env, lifecycle)?;
-            }
-            Ok(last_result)
-        } else {
-            Err("Expected ASTNode::Program at root.".to_string())
-        }
-    }
-
-    fn evaluate_with_lifecycle_recursive(
         node: &ASTNode,
         env: &Rc<RefCell<Environment>>,
         lifecycle: &mut QubitLifecycleManager,
+        simulator: &mut NativeSimulator,
+    ) -> Result<RuntimeValue, String> {
+        let mut qubit_map: QubitMap = HashMap::new();
+        let mut next_alloc = 0;
+
+        Self::eval_recursive(node, env, lifecycle, simulator, &mut qubit_map, &mut next_alloc)
+    }
+    fn resolve_qubits(args: &[ASTNode], map: &QubitMap) -> Result<Vec<usize>, String> {
+        let mut indices = Vec::new();
+        for arg in args {
+            if let ASTNode::ArrayAccess { array, index, .. } = arg {
+                if let ASTNode::Identifier { name, .. } = &**array {
+                    if let ASTNode::IntLiteral(idx) = &**index {
+                        if let Some(start) = map.get(name) {
+                            indices.push(start + (*idx as usize));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(indices)
+    }
+
+    fn eval_recursive(
+        node: &ASTNode,
+        env: &Rc<RefCell<Environment>>,
+        lifecycle: &mut QubitLifecycleManager,
+        simulator: &mut NativeSimulator,
+        qubit_map: &mut QubitMap,
+        next_alloc: &mut usize,
     ) -> Result<RuntimeValue, String> {
         match node {
-            // 1. Quantum Declarations (Intercepted)
-            ASTNode::QuantumDeclaration { name, size, initial_state } => {
-                let register_size = if let Some(size_expr) = size {
-                    let size_val = Self::evaluate(size_expr, env)?;
-                    match size_val {
-                        RuntimeValue::Int(n) if n > 0 => n as usize,
+
+            ASTNode::Program(statements) => {
+                let mut last = RuntimeValue::None;
+                for stmt in statements {
+                    last = Self::eval_recursive(stmt, env, lifecycle, simulator, qubit_map, next_alloc)?;
+                    if let RuntimeValue::ReturnValue(_) = last {
+                        return Ok(last);
+                    }
+                }
+                Ok(last)
+            }
+            ASTNode::QuantumDeclaration { name, size, .. } => {
+                let count = if let Some(size_expr) = size {
+                    match Self::evaluate(size_expr, env)? {
+                        RuntimeValue::Int(n) => n as usize,
                         _ => 1,
                     }
                 } else {
                     1
                 };
 
-                lifecycle.register_qubits(
-                    name,
-                    register_size,
-                    QubitState::Classical(false)
-                );
-                Self::eval_quantum_declaration(name, size, initial_state, env)
-            }
+                qubit_map.insert(name.clone(), *next_alloc);
+                *next_alloc += count;
 
+                lifecycle.register_qubits(name, count, QubitState::Classical(false));
+
+                let dummy_state = Self::default_state_vector(count)?;
+                let register = RuntimeValue::QuantumRegister {
+                    size: count,
+                    state: Rc::new(RefCell::new(dummy_state)),
+                };
+                env.borrow_mut().set(name.clone(), register);
+
+                Ok(RuntimeValue::None)
+            }
 
             ASTNode::Apply { gate_expr, arguments, loc } => {
                 let qubit_ids = Self::extract_qubit_ids_runtime(arguments, env)?;
-                let gate_name = Self::extract_gate_name_runtime(gate_expr)?;
-                let is_controlled = Self::is_controlled_gate(gate_expr);
 
-                if is_controlled {
-                    let num_controls = Self::count_controls(gate_expr);
-                    let (controls, targets) = qubit_ids.split_at(num_controls);
-                    lifecycle.record_controlled_gate(controls, targets, &gate_name, *loc)
+                let (gate_name, is_dagger) = Self::extract_gate_info_runtime(gate_expr)?;
+
+                if Self::is_controlled_gate(gate_expr) {
+                     let num_controls = Self::count_controls(gate_expr);
+                     let (controls, targets) = qubit_ids.split_at(num_controls);
+                     lifecycle.record_controlled_gate(controls, targets, &gate_name, *loc)
                         .map_err(|e| e.to_string())?;
                 } else {
                     for qubit_id in &qubit_ids {
@@ -3006,91 +3033,70 @@ impl Evaluator {
                             .map_err(|e| e.to_string())?;
                     }
                 }
-                Self::eval_apply_statement(gate_expr, arguments, loc, env)
+
+                let target_indices = Self::resolve_qubits(arguments, qubit_map)?;
+
+                let mut params = Vec::new();
+                Self::extract_gate_params(gate_expr, &mut params, env)?;
+
+                simulator.apply_gate(&gate_name, &target_indices, &params, is_dagger)
+                    .map_err(|e| format!("Simulator Error: {}", e))?;
+
+                Ok(RuntimeValue::None)
             }
 
             ASTNode::Measure(qubit_expr) => {
+                // 1. Lifecycle Check
                 let qubit_ids = Self::extract_qubit_ids_runtime(&[*qubit_expr.clone()], env)?;
                 let loc = Self::get_node_location(qubit_expr);
-
                 for qubit_id in &qubit_ids {
                     lifecycle.record_operation(qubit_id, QubitOperation::Measure, loc)
                         .map_err(|e| e.to_string())?;
                 }
-                Self::eval_measure(qubit_expr, env)
-            }
 
-
-            ASTNode::LetDeclaration { name, value, .. } => {
-                let val = Self::evaluate_with_lifecycle_recursive(value, env, lifecycle)?;
-                env.borrow_mut().set(name.clone(), val);
-                Ok(RuntimeValue::None)
-            }
-
-            // 5. Assignment (Recurse into value)
-            ASTNode::Assignment { target, value } => {
-                let new_value = Self::evaluate_with_lifecycle_recursive(value, env, lifecycle)?;
-
-                match &**target {
-                    ASTNode::Identifier { name, .. } => {
-                         if let Some(var_rc) = env.borrow().get(name) {
-                            *var_rc.borrow_mut() = new_value;
-                            Ok(RuntimeValue::None)
-                        } else {
-                            Err(format!("Runtime Error: Undefined variable '{}'.", name))
-                        }
-                    }
-
-                    _ => {
-                         Self::eval_assignment(target, value, env)
-                    }
+                let indices = Self::resolve_qubits(&[*qubit_expr.clone()], qubit_map)?;
+                if indices.is_empty() {
+                    return Err("Runtime Error: Could not resolve qubit for measurement.".to_string());
                 }
+                let target = indices[0];
+
+                let result = simulator.measure_single(target);
+
+                Ok(RuntimeValue::Int(result as i64))
             }
 
-            // 6. Block (Recurse)
             ASTNode::Block(statements) => {
-                let mut last_result = RuntimeValue::None;
+                let mut last = RuntimeValue::None;
                 for stmt in statements {
-                    last_result = Self::evaluate_with_lifecycle_recursive(stmt, env, lifecycle)?;
-                    match last_result {
-                        RuntimeValue::ReturnValue(_) | RuntimeValue::Break | RuntimeValue::Continue => {
-                            return Ok(last_result);
-                        }
+                    last = Self::eval_recursive(stmt, env, lifecycle, simulator, qubit_map, next_alloc)?;
+                    match last {
+                        RuntimeValue::ReturnValue(_) | RuntimeValue::Break | RuntimeValue::Continue => return Ok(last),
                         _ => {}
                     }
                 }
-                Ok(last_result)
+                Ok(last)
             }
 
-            // 7. If Statement (Recurse)
             ASTNode::If { condition, then_block, elif_blocks, else_block } => {
-
-                let cond_val = Self::evaluate_with_lifecycle_recursive(condition, env, lifecycle)?;
-
+                let cond_val = Self::evaluate(condition, env)?;
                 if Self::is_truthy(&cond_val) {
-                    return Self::evaluate_with_lifecycle_recursive(then_block, env, lifecycle);
+                    return Self::eval_recursive(then_block, env, lifecycle, simulator, qubit_map, next_alloc);
                 }
-
-                for (elif_cond, elif_body) in elif_blocks {
-                    let elif_val = Self::evaluate_with_lifecycle_recursive(elif_cond, env, lifecycle)?;
-                    if Self::is_truthy(&elif_val) {
-                        return Self::evaluate_with_lifecycle_recursive(elif_body, env, lifecycle);
+                for (cond, body) in elif_blocks {
+                    if Self::is_truthy(&Self::evaluate(cond, env)?) {
+                        return Self::eval_recursive(body, env, lifecycle, simulator, qubit_map, next_alloc);
                     }
                 }
-
                 if let Some(else_body) = else_block {
-                    return Self::evaluate_with_lifecycle_recursive(else_body, env, lifecycle);
+                    return Self::eval_recursive(else_body, env, lifecycle, simulator, qubit_map, next_alloc);
                 }
                 Ok(RuntimeValue::None)
             }
 
-            // 8. Loops (Recurse)
             ASTNode::While { condition, body } => {
                 loop {
-                    let cond_val = Self::evaluate_with_lifecycle_recursive(condition, env, lifecycle)?;
-                    if !Self::is_truthy(&cond_val) { break; }
-
-                    let res = Self::evaluate_with_lifecycle_recursive(body, env, lifecycle)?;
+                    if !Self::is_truthy(&Self::evaluate(condition, env)?) { break; }
+                    let res = Self::eval_recursive(body, env, lifecycle, simulator, qubit_map, next_alloc)?;
                     match res {
                         RuntimeValue::Break => break,
                         RuntimeValue::Continue => continue,
@@ -3108,10 +3114,9 @@ impl Evaluator {
                     RuntimeValue::Register(r) => r.iter().map(|v| v.borrow().clone()).collect(),
                     _ => return Err("Invalid iterator".to_string()),
                 };
-
                 for item in iterable {
                     env.borrow_mut().set(variable.clone(), item);
-                    let res = Self::evaluate_with_lifecycle_recursive(body, env, lifecycle)?;
+                    let res = Self::eval_recursive(body, env, lifecycle, simulator, qubit_map, next_alloc)?;
                     match res {
                         RuntimeValue::Break => break,
                         RuntimeValue::Continue => continue,
@@ -3121,22 +3126,88 @@ impl Evaluator {
                 }
                 Ok(RuntimeValue::None)
             }
-            ASTNode::FunctionCall { callee, arguments, loc, is_dagger } => {
-                Self::eval_function_call_with_lifecycle(callee, arguments, loc, env, *is_dagger, lifecycle)
+
+            ASTNode::LetDeclaration { name, value, .. } => {
+                let val = Self::eval_recursive(value, env, lifecycle, simulator, qubit_map, next_alloc)?;
+                env.borrow_mut().set(name.clone(), val);
+                Ok(RuntimeValue::None)
             }
 
+            ASTNode::Assignment { target, value } => {
+                let new_value = Self::eval_recursive(value, env, lifecycle, simulator, qubit_map, next_alloc)?;
+                match &**target {
+                    ASTNode::Identifier { name, .. } => {
+                         if let Some(var_rc) = env.borrow().get(name) {
+                            *var_rc.borrow_mut() = new_value;
+                            Ok(RuntimeValue::None)
+                        } else {
+                            Err(format!("Runtime Error: Undefined variable '{}'.", name))
+                        }
+                    }
+                    _ => Self::eval_assignment(target, value, env)
+                }
+            }
+
+            ASTNode::FunctionCall { callee, arguments, loc, is_dagger } => {
+                Self::eval_function_call_with_lifecycle_recursive(
+                    callee, arguments, loc, env, *is_dagger, lifecycle, simulator, qubit_map, next_alloc
+                )
+            }
 
             _ => Self::evaluate(node, env)
         }
     }
-    fn eval_function_call_with_lifecycle(
+
+    fn eval_function_call_with_lifecycle_recursive(
         callee_expr: &ASTNode,
         arguments: &[ASTNode],
         loc: &Loc,
         env: &Rc<RefCell<Environment>>,
         is_dagger: bool,
         lifecycle: &mut QubitLifecycleManager,
+        simulator: &mut NativeSimulator,
+        qubit_map: &mut QubitMap,
+        next_alloc: &mut usize,
     ) -> Result<RuntimeValue, String> {
+
+        if let ASTNode::Identifier { name, .. } = callee_expr {
+            if name == "debug_state" {
+                if let Some(arg) = arguments.get(0) {
+                    let mut indices = Vec::new();
+
+                    match arg {
+                        ASTNode::Identifier { name: var_name, .. } => {
+                            if let Some(&start) = qubit_map.get(var_name) {
+                                // Get size from environment
+                                if let Some(val) = env.borrow().get(var_name) {
+                                    if let RuntimeValue::QuantumRegister { size, .. } = &*val.borrow() {
+                                        for i in 0..*size {
+                                            indices.push(start + i);
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        ASTNode::ArrayAccess { array, index, .. } => {
+                             if let ASTNode::Identifier { name: var_name, .. } = &**array {
+                                 if let ASTNode::IntLiteral(idx) = &**index {
+                                     if let Some(&start) = qubit_map.get(var_name) {
+                                         indices.push(start + (*idx as usize));
+                                     }
+                                 }
+                             }
+                        },
+                        _ => {}
+                    }
+
+                    if !indices.is_empty() {
+                        simulator.dump_state(&indices);
+                        return Ok(RuntimeValue::None);
+                    }
+                }
+            }
+        }
+
         let evaluated_args = Self::eval_arguments(arguments, env)?;
         let function = Self::evaluate(callee_expr, env)?;
 
@@ -3151,8 +3222,7 @@ impl Evaluator {
                 }
                 let function_scope_rc = Rc::new(RefCell::new(function_scope));
 
-
-                let result = Self::evaluate_with_lifecycle_recursive(&body, &function_scope_rc, lifecycle)?;
+                let result = Self::eval_recursive(&body, &function_scope_rc, lifecycle, simulator, qubit_map, next_alloc)?;
 
                 if let RuntimeValue::ReturnValue(val) = result {
                     Ok(*val)

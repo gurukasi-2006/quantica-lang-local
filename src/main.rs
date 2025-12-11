@@ -20,6 +20,7 @@ mod graphics_runtime;
 use hardware_integration::{parse_hardware_config, HardwareExecutor};
 use quantum_backend::QuantumConfig;
 use crate::qubit_lifecycle::QubitLifecycleManager;
+use crate::quantum_backend::native_simulator::NativeSimulator;
 
 use crate::codegen::Compiler;
 use crate::doc_generator::DocGenerator;
@@ -411,9 +412,14 @@ fn compile_file(filename: &str, show_ast: bool, show_tokens: bool, verbose: bool
     }
 
     let env = std::rc::Rc::new(std::cell::RefCell::new(Environment::new()));
-
-
     let mut lifecycle = QubitLifecycleManager::new(true); // strict mode enabled
+
+    // 1. Scan for qubits
+    let total_qubits = count_total_qubits(&ast);
+    if verbose { println!("   -> Allocated Quantum Memory: {} qubits", total_qubits); }
+
+    // 2. Initialize Native Backend
+    let mut simulator = NativeSimulator::new(total_qubits);
 
     if verbose {
         println!("Program Output:");
@@ -422,15 +428,20 @@ fn compile_file(filename: &str, show_ast: bool, show_tokens: bool, verbose: bool
 
     let start_time = Instant::now();
 
-
-    let evaluation_result = Evaluator::evaluate_program_with_lifecycle(&ast, &env, &mut lifecycle);
+    //Evaluator (Hybrid Mode)
+    let result = Evaluator::evaluate_program_with_lifecycle(
+        &ast,
+        &env,
+        &mut lifecycle,
+        &mut simulator,
+    );
 
     let duration = start_time.elapsed();
 
     println!("{:-<60}", "");
     println!("Interpreter Time: {:.6} seconds", duration.as_secs_f64());
 
-    match evaluation_result {
+    match result {
         Ok(_) => {
             println!("✓ Execution successful!");
 
@@ -1465,4 +1476,32 @@ fn parse_error_location(error_msg: &str) -> Option<parser::ast::Loc> {
         return Some(parser::ast::Loc { line, column });
     }
     None
+}
+fn count_total_qubits(node: &ASTNode) -> usize {
+    match node {
+        ASTNode::Program(stmts) | ASTNode::Block(stmts) => {
+            stmts.iter().map(count_total_qubits).sum()
+        }
+        ASTNode::QuantumDeclaration { size, .. } => {
+            // If size is a literal integer, use it. Default to 1.
+            if let Some(size_expr) = size {
+                if let ASTNode::IntLiteral(n) = &**size_expr {
+                    *n as usize
+                } else {
+                    1 // Dynamic sizes might need more complex handling
+                }
+            } else {
+                1
+            }
+        }
+        ASTNode::If { then_block, elif_blocks, else_block, .. } => {
+            let mut sum = count_total_qubits(then_block);
+            for (_, block) in elif_blocks { sum += count_total_qubits(block); }
+            if let Some(blk) = else_block { sum += count_total_qubits(blk); }
+            sum
+        }
+        ASTNode::For { body, .. } | ASTNode::While { body, .. } => count_total_qubits(body),
+        // ... Recurse into other structures as needed ...
+        _ => 0,
+    }
 }
