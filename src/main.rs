@@ -1,4 +1,4 @@
-// src/main.rs
+/*  src/main.rs */
 mod codegen;
 mod doc_generator;
 mod environment;
@@ -55,7 +55,7 @@ enum CompilationTarget {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== Quantica Compiler v0.1 ===\n");
+    println!("=== Quantica Compiler v0.1.2 ===\n");
 
     let args: Vec<String> = env::args().collect();
 
@@ -81,7 +81,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if enable_lifecycle_checking {
-        println!("✓ Qubit lifecycle checking enabled");
+        println!("Note : Qubit lifecycle checking enabled");
     } else {
         println!("⚠️ Qubit lifecycle checking disabled");
     }
@@ -204,7 +204,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if args.len() >= 2 && args[1] == "--version" {
-        println!("Quantica v0.1.0");
+        println!("Quantica v0.1.2");
         println!("Quantica By Quantica Foundation");
         return Ok(());
     }
@@ -364,6 +364,7 @@ fn compile_file(filename: &str, show_ast: bool, show_tokens: bool, verbose: bool
             std::process::exit(1);
         }
     };
+    //lexer.debug_print_tokens(&tokens);
 
     if show_tokens {
         println!("=== TOKENS ===");
@@ -414,11 +415,11 @@ fn compile_file(filename: &str, show_ast: bool, show_tokens: bool, verbose: bool
     let env = std::rc::Rc::new(std::cell::RefCell::new(Environment::new()));
     let mut lifecycle = QubitLifecycleManager::new(true); // strict mode enabled
 
-    // 1. Scan for qubits
+
     let total_qubits = count_total_qubits(&ast);
     if verbose { println!("   -> Allocated Quantum Memory: {} qubits", total_qubits); }
 
-    // 2. Initialize Native Backend
+
     let mut simulator = NativeSimulator::new(total_qubits);
 
     if verbose {
@@ -1472,13 +1473,13 @@ fn run_on_hardware(
     Ok(())
 }
 fn parse_error_location(error_msg: &str) -> Option<parser::ast::Loc> {
-    // Look for "at [Line X, Col Y]"
+
     let start_bytes = error_msg.find("[Line ")?;
     let rest = &error_msg[start_bytes..];
     let end_bytes = rest.find(']')?;
-    let content = &rest[6..end_bytes]; // skip "[Line "
+    let content = &rest[6..end_bytes];
 
-    // content is now "X, Col Y"
+
     let parts: Vec<&str> = content.split(", Col ").collect();
     if parts.len() == 2 {
         let line = parts[0].parse().ok()?;
@@ -1493,12 +1494,12 @@ fn count_total_qubits(node: &ASTNode) -> usize {
             stmts.iter().map(count_total_qubits).sum()
         }
         ASTNode::QuantumDeclaration { size, .. } => {
-            // If size is a literal integer, use it. Default to 1.
+
             if let Some(size_expr) = size {
                 if let ASTNode::IntLiteral(n) = &**size_expr {
                     *n as usize
                 } else {
-                    1 // Dynamic sizes might need more complex handling
+                    1
                 }
             } else {
                 1
@@ -1511,7 +1512,7 @@ fn count_total_qubits(node: &ASTNode) -> usize {
             sum
         }
         ASTNode::For { body, .. } | ASTNode::While { body, .. } => count_total_qubits(body),
-        // ... Recurse into other structures as needed ...
+
         _ => 0,
     }
 }

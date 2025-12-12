@@ -1,4 +1,4 @@
-//src/typechecker.rs
+
 
 use crate::parser::ast::{ASTNode, BinaryOperator, ImportSpec, Type, UnaryOperator};
 use std::cell::RefCell;
@@ -366,6 +366,31 @@ impl TypeChecker {
             let mut lifecycle = QubitLifecycleManager::new(true);
 
             Self::prefill_environment(&env);
+
+
+            for stmt in statements {
+                match stmt {
+                    ASTNode::FunctionDeclaration { name, parameters, return_type, .. } => {
+                        let param_types: Vec<Type> = parameters.iter().map(|p| p.param_type.clone()).collect();
+                        let rt = return_type.clone().unwrap_or(Type::Any);
+                        let func_type = Type::Function(param_types, Box::new(rt));
+                        env.borrow_mut().set(name.clone(), Self::immutable_info(func_type));
+                    },
+                    ASTNode::CircuitDeclaration { name, parameters, return_type, .. } => {
+                         let param_types: Vec<Type> = parameters.iter().map(|p| p.param_type.clone()).collect();
+                         let rt = return_type.clone().unwrap_or(Type::Any);
+                         let func_type = Type::Function(param_types, Box::new(rt));
+                         env.borrow_mut().set(name.clone(), Self::immutable_info(func_type));
+                    },
+                    ASTNode::ClassDeclaration { name, .. } => {
+                        let class_type = Type::Class(name.clone());
+                        env.borrow_mut().set(name.clone(), TypeInfo { var_type: class_type, is_mutable: false });
+                    },
+                    _ => {}
+                }
+            }
+
+
 
             for stmt in statements {
                 Self::check_with_lifecycle(stmt, &env, None, &mut lifecycle)?;
@@ -903,7 +928,6 @@ impl TypeChecker {
                 let new_type = Self::check(value, env, Option::None)?;
 
                 match target.as_ref() {
-
                     ASTNode::Identifier { name, .. } => {
                         let original_info = match env.borrow().get(name) {
                             Some(info) => info,
@@ -912,11 +936,13 @@ impl TypeChecker {
                         if !original_info.is_mutable {
                             return Err(format!("Mutability Error: Cannot assign to immutable variable '{}'.", name));
                         }
-                        if original_info.var_type != new_type &&
-                        original_info.var_type != Type::Any &&
-                        new_type != Type::None &&
-                        new_type != Type::Any {
 
+
+                        if original_info.var_type != new_type
+                            && original_info.var_type != Type::Any
+                            && new_type != Type::None
+                            && new_type != Type::Any
+                        {
                             let is_quantum_compat = matches!(
                                 (&new_type, &original_info.var_type),
                                 (Type::QuantumRegister(_), Type::QuantumRegister(None))
@@ -927,14 +953,32 @@ impl TypeChecker {
                                 _ => false,
                             };
 
-                            if !is_quantum_compat && !is_class_compat {
+
+                            let is_array_compat = match (&original_info.var_type, &new_type) {
+                                (Type::Array(t1), Type::Array(t2)) => **t1 == Type::Any || **t2 == Type::Any,
+                                _ => false
+                            };
+
+
+                            if !is_quantum_compat && !is_class_compat && !is_array_compat {
                                 return Err(format!(
                                     "Type Error: Mismatched types in assignment. Cannot assign type {:?} to variable '{}' of type {:?}",
                                     new_type, name, original_info.var_type
                                 ));
                             }
-
                         }
+
+
+
+                        if let Type::Array(inner) = &original_info.var_type {
+                            if **inner == Type::Any {
+                                env.borrow_mut().set(name.clone(), TypeInfo {
+                                    var_type: new_type,
+                                    is_mutable: true
+                                });
+                            }
+                        }
+
                         Ok(Type::None)
                     }
 
@@ -1006,6 +1050,11 @@ impl TypeChecker {
                                     (Type::QuantumRegister(_), Type::QuantumRegister(None))
                                 );
 
+                                let is_array_compat = match (&field_info.var_type, &new_type) {
+                                    (Type::Array(t1), Type::Array(t2)) => **t1 == Type::Any || **t2 == Type::Any,
+                                    _ => false
+                                };
+
                                 if !is_compat && new_type != field_info.var_type {
                                      return Err(format!(
                                         "Type Error: Cannot assign type {:?} to field '{}.{}' of type {:?}",
@@ -1059,13 +1108,11 @@ impl TypeChecker {
                 }
             }
             ASTNode::ClassDeclaration { name, fields, methods, constructor, .. } => {
-
                 let class_type = Type::Class(name.clone());
                 env.borrow_mut().set(
                     name.clone(),
                     TypeInfo { var_type: class_type, is_mutable: false }
                 );
-
 
                 let class_env = Rc::new(RefCell::new(TypeEnvironment::new_enclosed(env.clone())));
 
@@ -1073,30 +1120,34 @@ impl TypeChecker {
                 for field in fields {
                     class_env.borrow_mut().set(
                         field.name.clone(),
-                        TypeInfo {
-                            var_type: field.field_type.clone(),
-                            is_mutable: true,
-                        }
+                        TypeInfo { var_type: field.field_type.clone(), is_mutable: true }
                     );
                     let global_field_key = format!("{}::{}", name, field.name);
                     env.borrow_mut().set(
                         global_field_key,
-                        TypeInfo {
-                            var_type: field.field_type.clone(),
-                            is_mutable: true,
-                        }
+                        TypeInfo { var_type: field.field_type.clone(), is_mutable: true }
                     );
                 }
 
 
+                for method in methods {
+                    let method_param_types: Vec<Type> = method.parameters.iter()
+                        .map(|p| p.param_type.clone())
+                        .collect();
+                    let method_return_type = method.return_type.clone().unwrap_or(Type::None);
+                    let method_func_type = Type::Function(method_param_types, Box::new(method_return_type));
+
+                    let global_method_key = format!("{}::{}", name, method.name);
+                    env.borrow_mut().set(
+                        global_method_key,
+                        TypeInfo { var_type: method_func_type, is_mutable: false }
+                    );
+                }
 
 
                 if let Some(constructor_node) = constructor {
                     if let ASTNode::FunctionDeclaration { body, parameters, .. } = &**constructor_node {
-                        let constructor_env = Rc::new(RefCell::new(
-                            TypeEnvironment::new_enclosed(class_env.clone())
-                        ));
-
+                        let constructor_env = Rc::new(RefCell::new(TypeEnvironment::new_enclosed(class_env.clone())));
 
 
                         let param_types: Vec<Type> = parameters.iter().map(|p| p.param_type.clone()).collect();
@@ -1106,68 +1157,31 @@ impl TypeChecker {
                             TypeInfo { var_type: ctor_type, is_mutable: false }
                         );
 
-
-                        constructor_env.borrow_mut().set(
-                            "self".to_string(),
-                            TypeInfo {
-                                var_type: Type::Instance(name.clone()),
-                                is_mutable: false,
-                            }
-                        );
-
+                        constructor_env.borrow_mut().set("self".to_string(), TypeInfo {
+                            var_type: Type::Instance(name.clone()), is_mutable: false,
+                        });
 
                         for param in parameters {
-                            constructor_env.borrow_mut().set(
-                                param.name.clone(),
-                                TypeInfo {
-                                    var_type: param.param_type.clone(),
-                                    is_mutable: false,
-                                }
-                            );
+                            constructor_env.borrow_mut().set(param.name.clone(), TypeInfo {
+                                var_type: param.param_type.clone(), is_mutable: false,
+                            });
                         }
-
                         Self::check(body, &constructor_env, Some(&Type::None))?;
                     }
                 }
 
 
                 for method in methods {
+                    let method_env = Rc::new(RefCell::new(TypeEnvironment::new_enclosed(class_env.clone())));
 
-                    let method_param_types: Vec<Type> = method.parameters.iter()
-                        .map(|p| p.param_type.clone())
-                        .collect();
-                    let method_return_type = method.return_type.clone().unwrap_or(Type::None);
-
-
-                    let method_func_type = Type::Function(method_param_types, Box::new(method_return_type));
-
-
-                    let global_method_key = format!("{}::{}", name, method.name);
-                    env.borrow_mut().set(
-                        global_method_key,
-                        TypeInfo { var_type: method_func_type, is_mutable: false }
-                    );
-                    let method_env = Rc::new(RefCell::new(
-                        TypeEnvironment::new_enclosed(class_env.clone())
-                    ));
-
-                    method_env.borrow_mut().set(
-                        "self".to_string(),
-                        TypeInfo {
-                            var_type: Type::Instance(name.clone()),
-                            is_mutable: false,
-                        }
-                    );
-
+                    method_env.borrow_mut().set("self".to_string(), TypeInfo {
+                        var_type: Type::Instance(name.clone()), is_mutable: false,
+                    });
 
                     for param in &method.parameters {
-                        method_env.borrow_mut().set(
-                            param.name.clone(),
-                            TypeInfo {
-                                var_type: param.param_type.clone(),
-                                is_mutable: false,
-                            }
-                        );
+                        method_env.borrow_mut().set(param.name.clone(), TypeInfo {
+                            var_type: param.param_type.clone(), is_mutable: false,
+                        });
                     }
 
                     let return_type = method.return_type.as_ref().unwrap_or(&Type::None);
@@ -1578,6 +1592,19 @@ impl TypeChecker {
                             (Type::Int, Type::Float) => Ok(Type::Float),
                             (Type::Float, Type::Int) => Ok(Type::Float),
                             (Type::String, Type::String) => Ok(Type::String),
+
+                            (Type::Array(t1), Type::Array(t2)) => {
+                                if **t1 == Type::Any {
+                                    Ok(Type::Array(t2.clone()))
+                                } else if **t2 == Type::Any {
+                                    Ok(Type::Array(t1.clone()))
+                                } else if t1 == t2 {
+                                    Ok(Type::Array(t1.clone()))
+                                } else {
+
+                                    Ok(Type::Array(Box::new(Type::Any)))
+                                }
+                            }
 
                             (Type::Any, _) | (_, Type::Any) => Ok(Type::Any),
                             _ => Err(format!("Type Error at {}: Cannot add types {:?} and {:?}", loc, left_type, right_type)),

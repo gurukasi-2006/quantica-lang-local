@@ -2625,6 +2625,13 @@ impl Evaluator {
                     (Add, RuntimeValue::String(l), RuntimeValue::String(r)) => {
                         Ok(RuntimeValue::String(format!("{}{}", l, r)))
                     }
+
+                    (Add, RuntimeValue::Register(l_arr), RuntimeValue::Register(r_arr)) => {
+                        let mut new_arr = l_arr.clone();
+                        new_arr.extend(r_arr);
+                        Ok(RuntimeValue::Register(new_arr))
+                    }
+
                     (Sub, RuntimeValue::Int(l), RuntimeValue::Int(r)) => {
                         Ok(RuntimeValue::Int(l - r))
                     }
