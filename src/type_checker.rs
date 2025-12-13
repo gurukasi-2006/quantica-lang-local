@@ -1572,9 +1572,9 @@ impl TypeChecker {
                         }
                         (Type::Array(t1), Type::Array(t2)) => {
                             if t1 == t2 {
-                                return Ok(Type::Array(t1));
+                                return Ok(*t1);
                             } else {
-                                return Ok(Type::Array(Box::new(Type::Any)));
+                                return Ok(Type::Float);
                             }
                         }
                         _ => return Err(format!(
