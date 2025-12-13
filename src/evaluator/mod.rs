@@ -2488,6 +2488,8 @@ impl Evaluator {
                         size: size_b,
                         state: state_b_rc,..
                     },
+
+
                 ) => {
                     let state_a = state_a_rc.borrow();
                     let state_b = state_b_rc.borrow();
@@ -2513,7 +2515,31 @@ impl Evaluator {
                         register_name: "tensor_result".to_string(),
                         global_start_index: None,
                     });
+
                 }
+
+                (RuntimeValue::Register(vec_a), RuntimeValue::Register(vec_b)) => {
+                    if vec_a.len() != vec_b.len() {
+                         return Err("Dimension mismatch for dot product".to_string());
+                    }
+
+                    let mut sum = 0.0;
+                    for (a_rc, b_rc) in vec_a.iter().zip(vec_b.iter()) {
+                        let a = match *a_rc.borrow() {
+                            RuntimeValue::Float(f) => f,
+                            RuntimeValue::Int(i) => i as f64,
+                            _ => return Err("Tensor product requires numbers".to_string())
+                        };
+                        let b = match *b_rc.borrow() {
+                            RuntimeValue::Float(f) => f,
+                            RuntimeValue::Int(i) => i as f64,
+                            _ => return Err("Tensor product requires numbers".to_string())
+                        };
+                        sum += a * b;
+                    }
+                    return Ok(RuntimeValue::Float(sum));
+                }
+
                 (l, r) => {
                     return Err(format!(
                         "Runtime Error at {}: Operator {:?} not defined for types {:?} and {:?}",
