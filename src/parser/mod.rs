@@ -1,4 +1,4 @@
-
+/* src/parser/mod.rs */
 pub mod ast;
 
 use crate::lexer::token::{Token, TokenWithLocation};
@@ -815,8 +815,15 @@ impl Parser {
         let loc = self.get_loc(self.current()?);
         self.expect(&Token::New)?;
 
-        let class_name_loc = self.expect_identifier()?;
-        let class_name = self.extract_identifier_name(&class_name_loc)?;
+        let name_loc = self.expect_identifier()?;
+        let mut class_name = self.extract_identifier_name(&name_loc)?;
+
+        while self.match_token(&Token::Dot) {
+            let part_loc = self.expect_identifier()?;
+            let part_name = self.extract_identifier_name(&part_loc)?;
+            class_name.push('.');
+            class_name.push_str(&part_name);
+        }
 
         self.expect(&Token::LeftParen)?;
         let arguments = self.parse_arguments()?;

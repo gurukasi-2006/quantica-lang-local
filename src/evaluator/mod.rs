@@ -198,6 +198,10 @@ impl Evaluator {
         e.set("_graphics_plot_set_title".to_string(), RuntimeValue::BuiltinFunction("_graphics_plot_set_title".to_string()));
         e.set("_graphics_plot_render".to_string(), RuntimeValue::BuiltinFunction("_graphics_plot_render".to_string()));
         e.set("_graphics_destroy_plot".to_string(), RuntimeValue::BuiltinFunction("_graphics_destroy_plot".to_string()));
+
+        e.set("file_write".to_string(), RuntimeValue::BuiltinFunction("file_write".to_string()));
+        e.set("file_read".to_string(), RuntimeValue::BuiltinFunction("file_read".to_string()));
+
     }
     fn is_truthy(val: &RuntimeValue) -> bool {
         match val {
@@ -221,6 +225,7 @@ impl Evaluator {
         methods: &Vec<ClassMethod>,
         constructor: &Option<Box<ASTNode>>,
         env: &Rc<RefCell<Environment>>,
+
     ) -> Result<RuntimeValue, String> {
 
         let mut method_map = HashMap::new();
@@ -234,6 +239,7 @@ impl Evaluator {
             fields: fields.clone(),
             methods: method_map,
             constructor: constructor.clone(),
+            definition_env: Some(env.clone()),
         };
 
         env.borrow_mut().set(name.to_string(), class_value);
@@ -247,22 +253,38 @@ impl Evaluator {
         env: &Rc<RefCell<Environment>>,
     ) -> Result<RuntimeValue, String> {
 
-        let class_value = env.borrow().get(class_name)
-            .ok_or_else(|| format!("Runtime Error at {}: Unknown class '{}'", loc, class_name))?;
+        let parts: Vec<&str> = class_name.split('.').collect();
 
-        let class_value_borrowed = class_value.borrow();
-        let (fields_def, methods, constructor) = match &*class_value_borrowed {
-            RuntimeValue::Class { fields, methods, constructor, .. } => {
-                (fields.clone(), methods.clone(), constructor.clone())
+        let class_value_rc = if parts.len() > 1 {
+            let module_name = parts[0];
+            let target_class = parts[1];
+
+            let module_rc = env.borrow().get(module_name)
+                .ok_or_else(|| format!("Runtime Error at {}: Unknown module '{}'", loc, module_name))?;
+
+            let module_val = module_rc.borrow();
+            if let RuntimeValue::Module(mod_env) = &*module_val {
+                mod_env.borrow().get(target_class)
+                    .ok_or_else(|| format!("Runtime Error at {}: Module '{}' has no class '{}'", loc, module_name, target_class))?
+            } else {
+                return Err(format!("Runtime Error at {}: '{}' is not a module.", loc, module_name));
+            }
+        } else {
+            env.borrow().get(class_name)
+                .ok_or_else(|| format!("Runtime Error at {}: Unknown class '{}'", loc, class_name))?
+        };
+
+        let class_borrow = class_value_rc.borrow();
+        let (fields_def, methods, constructor, def_env) = match &*class_borrow {
+            RuntimeValue::Class { fields, methods, constructor, definition_env, .. } => {
+                (fields.clone(), methods.clone(), constructor.clone(), definition_env.clone())
             }
             _ => return Err(format!("Runtime Error at {}: '{}' is not a class", loc, class_name)),
         };
-        drop(class_value_borrowed);
-
+        drop(class_borrow);
 
         let mut instance_fields = HashMap::new();
         let mut initial_values = HashMap::new();
-
         for field in &fields_def {
             let value = if let Some(default_expr) = &field.default_value {
                 Self::evaluate(default_expr, env)?
@@ -270,22 +292,20 @@ impl Evaluator {
                 RuntimeValue::None
             };
 
-            initial_values.insert(field.name.clone(), value.clone());
-
-            instance_fields.insert(field.name.clone(), Rc::new(RefCell::new(value)));
+            let shared_ptr = Rc::new(RefCell::new(value));
+            initial_values.insert(field.name.clone(), shared_ptr.clone());
+            instance_fields.insert(field.name.clone(), shared_ptr);
         }
-
 
         let instance = RuntimeValue::Instance {
             class_name: class_name.to_string(),
             fields: instance_fields.clone(),
             methods: methods.clone(),
+            definition_env: def_env.clone(),
         };
-
 
         if let Some(constructor_node) = constructor {
             if let ASTNode::FunctionDeclaration { parameters, body, .. } = &*constructor_node {
-
                 let mut evaluated_args = Vec::new();
                 for arg in arguments {
                     evaluated_args.push(Self::evaluate(arg, env)?);
@@ -295,39 +315,21 @@ impl Evaluator {
                     return Err(format!("Runtime Error: Constructor arg mismatch."));
                 }
 
-                let constructor_env = Rc::new(RefCell::new(Environment::new_enclosed(env.clone())));
-
+                let parent_env = def_env.unwrap_or(env.clone());
+                let constructor_env = Rc::new(RefCell::new(Environment::new_enclosed(parent_env)));
 
                 constructor_env.borrow_mut().set("self".to_string(), instance.clone());
 
-
-                for (name, val) in &initial_values {
-                    constructor_env.borrow_mut().set(name.clone(), val.clone());
+                for (name, val_rc) in &initial_values {
+                    constructor_env.borrow_mut().define_rc(name.clone(), val_rc.clone());
                 }
-
 
                 for (param, arg_value) in parameters.iter().zip(evaluated_args) {
                     constructor_env.borrow_mut().set(param.name.clone(), arg_value);
                 }
 
-
                 Self::evaluate(&body, &constructor_env)?;
 
-
-                for (field_name, field_rc) in &instance_fields {
-                    if let Some(local_val_rc) = constructor_env.borrow().get(field_name) {
-                        let local_val = local_val_rc.borrow().clone();
-
-
-                        if let Some(initial_val) = initial_values.get(field_name) {
-
-                            if !Self::are_values_equal(&local_val, initial_val) {
-
-                                *field_rc.borrow_mut() = local_val;
-                            }
-                        }
-                    }
-                }
             }
         }
 
@@ -361,8 +363,8 @@ impl Evaluator {
                 class_name,
                 fields,
                 methods,
+                definition_env,
             } => {
-
                 let method = methods.get(method_name).ok_or_else(|| {
                     format!(
                         "Runtime Error at {}: Class '{}' has no method '{}'",
@@ -370,12 +372,10 @@ impl Evaluator {
                     )
                 })?;
 
-
                 let mut evaluated_args = Vec::new();
                 for arg in arguments {
                     evaluated_args.push(Self::evaluate(arg, env)?);
                 }
-
 
                 if method.parameters.len() != evaluated_args.len() {
                     return Err(format!(
@@ -387,41 +387,33 @@ impl Evaluator {
                     ));
                 }
 
-
-                let method_env = Rc::new(RefCell::new(Environment::new_enclosed(env.clone())));
+                let parent_env = definition_env.unwrap_or(env.clone());
+                let method_env = Rc::new(RefCell::new(Environment::new_enclosed(parent_env)));
 
                 let self_instance = RuntimeValue::Instance {
                     class_name: class_name.clone(),
                     fields: fields.clone(),
                     methods: methods.clone(),
+                    definition_env: None,
                 };
                 method_env.borrow_mut().set("self".to_string(), self_instance);
 
-
-                for (field_name, field_value) in &fields {
+                for (field_name, field_value_rc) in &fields {
                     method_env
                         .borrow_mut()
-                        .set(field_name.clone(), field_value.borrow().clone());
+                        .define_rc(field_name.clone(), field_value_rc.clone());
                 }
-
 
                 for (param, arg_value) in method.parameters.iter().zip(evaluated_args) {
                     method_env.borrow_mut().set(param.name.clone(), arg_value);
                 }
 
-
                 let result = Self::evaluate(&method.body, &method_env)?;
 
-
-                for (field_name, field_rc) in &fields {
-
-                    if let Some(env_val_rc) = method_env.borrow().get(field_name) {
-
-                        let new_val = env_val_rc.borrow().clone();
-
-
-                        *field_rc.borrow_mut() = new_val;
-                    }
+                for (field_name, field_value_rc) in &fields {
+                    method_env
+                        .borrow_mut()
+                        .define_rc(field_name.clone(), field_value_rc.clone());
                 }
                 match result {
                     RuntimeValue::ReturnValue(val) => Ok(*val),
@@ -487,8 +479,10 @@ impl Evaluator {
                             } else {
                                 RuntimeValue::None
                             };
-                            initial_values.insert(field.name.clone(), value.clone());
-                            instance_fields.insert(field.name.clone(), Rc::new(RefCell::new(value)));
+
+                            let shared_ptr = Rc::new(RefCell::new(value));
+                            initial_values.insert(field.name.clone(), shared_ptr.clone());
+                            instance_fields.insert(field.name.clone(), shared_ptr);
                         }
 
 
@@ -496,6 +490,7 @@ impl Evaluator {
                             class_name: name.clone(),
                             fields: instance_fields.clone(),
                             methods: methods.clone(),
+                            definition_env: None,
                         };
 
 
@@ -512,7 +507,7 @@ impl Evaluator {
 
 
                                 for (name, val) in &initial_values {
-                                    constructor_env.borrow_mut().set(name.clone(), val.clone());
+                                    constructor_env.borrow_mut().define_rc(name.clone(), val.clone());
                                 }
 
 
@@ -523,25 +518,27 @@ impl Evaluator {
 
                                 Self::evaluate(&body, &constructor_env)?;
 
-
+                                /*
                                 for (field_name, field_rc) in &instance_fields {
                                     if let Some(local_val_rc) = constructor_env.borrow().get(field_name) {
                                         let local_val = local_val_rc.borrow().clone();
 
-                                        if let Some(initial_val) = initial_values.get(field_name) {
+                                        if let Some(initial_val_rc) = initial_values.get(field_name) {
+                                            let initial_val = initial_val_rc.borrow();
 
-                                            if !Self::are_values_equal(&local_val, initial_val) {
+                                            if !Self::are_values_equal(&local_val, &*initial_val) {
                                                 *field_rc.borrow_mut() = local_val;
                                             }
                                         }
                                     }
                                 }
-
+                                */
 
                                 instance = RuntimeValue::Instance {
                                     class_name: name.clone(),
                                     fields: instance_fields,
                                     methods,
+                                    definition_env: None,
                                 };
                             }
                         }
@@ -1616,6 +1613,10 @@ impl Evaluator {
                     "_graphics_plot_set_title" => Self::builtin_graphics_plot_set_title(evaluated_args),
                     "_graphics_plot_render" => Self::builtin_graphics_plot_render(evaluated_args),
                     "_graphics_destroy_plot" => Self::builtin_graphics_destroy_plot(evaluated_args),
+
+                    "file_write" => Self::builtin_file_write(evaluated_args),
+                    "file_read" => Self::builtin_file_read(evaluated_args),
+
                     _ => Err(format!(
                         "Runtime Error at {}: Unknown built-in function '{}'.",
                         loc, func_name
@@ -1684,6 +1685,7 @@ impl Evaluator {
                             class_name: name.clone(),
                             fields: instance_fields.clone(),
                             methods: methods.clone(),
+                            definition_env: None,
                         };
 
 
@@ -1730,6 +1732,7 @@ impl Evaluator {
                                     class_name: name.clone(),
                                     fields: instance_fields,
                                     methods,
+                                    definition_env: None,
                                 };
                             }
                         }
@@ -1928,6 +1931,39 @@ impl Evaluator {
                 args[0].type_name()
             )),
         }
+    }
+
+    fn builtin_file_write(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
+        if args.len() != 2 {
+            return Err("Runtime Error: 'file_write' expects 2 arguments (path, content).".to_string());
+        }
+
+        let path = match &args[0] {
+            RuntimeValue::String(s) => s,
+            _ => return Err("Runtime Error: File path must be a String.".to_string())
+        };
+
+        let content = match &args[1] {
+            RuntimeValue::String(s) => s,
+            _ => return Err("Runtime Error: File content must be a String.".to_string())
+        };
+
+        std::fs::write(path, content).map_err(|e| format!("File Write Error: {}", e))?;
+        Ok(RuntimeValue::None)
+    }
+
+    fn builtin_file_read(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
+        if args.len() != 1 {
+            return Err("Runtime Error: 'file_read' expects 1 argument (path).".to_string());
+        }
+
+        let path = match &args[0] {
+            RuntimeValue::String(s) => s,
+            _ => return Err("Runtime Error: File path must be a String.".to_string())
+        };
+
+        let content = std::fs::read_to_string(path).map_err(|e| format!("File Read Error: {}", e))?;
+        Ok(RuntimeValue::String(content))
     }
 
     pub fn builtin_measure(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {

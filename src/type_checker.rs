@@ -1,4 +1,4 @@
-
+/* src/type_checker.rs */
 
 use crate::parser::ast::{ASTNode, BinaryOperator, ImportSpec, Type, UnaryOperator};
 use std::cell::RefCell;
@@ -358,6 +358,23 @@ impl TypeChecker {
             "_graphics_destroy_plot".to_string(),
             immut(Type::Function(vec![Type::Int], Box::new(Type::None))),
         );
+
+        env_mut.set(
+            "file_write".to_string(),
+            immut(Type::Function(
+                vec![Type::String, Type::String], // Arguments: (path, content)
+                Box::new(Type::None),             // Returns: None
+            )),
+        );
+
+        env_mut.set(
+            "file_read".to_string(),
+            immut(Type::Function(
+                vec![Type::String],      // Argument: (path)
+                Box::new(Type::String),  // Returns: String (content)
+            )),
+        );
+
     }
 
     pub fn check_program(node: &ASTNode) -> Result<(), String> {
@@ -367,30 +384,38 @@ impl TypeChecker {
 
             Self::prefill_environment(&env);
 
-
             for stmt in statements {
                 match stmt {
                     ASTNode::FunctionDeclaration { name, parameters, return_type, .. } => {
                         let param_types: Vec<Type> = parameters.iter().map(|p| p.param_type.clone()).collect();
                         let rt = return_type.clone().unwrap_or(Type::Any);
                         let func_type = Type::Function(param_types, Box::new(rt));
-                        env.borrow_mut().set(name.clone(), Self::immutable_info(func_type));
+
+                        env.borrow_mut().set(name.clone(), TypeInfo {
+                            var_type: func_type,
+                            is_mutable: false
+                        });
                     },
                     ASTNode::CircuitDeclaration { name, parameters, return_type, .. } => {
                          let param_types: Vec<Type> = parameters.iter().map(|p| p.param_type.clone()).collect();
                          let rt = return_type.clone().unwrap_or(Type::Any);
                          let func_type = Type::Function(param_types, Box::new(rt));
-                         env.borrow_mut().set(name.clone(), Self::immutable_info(func_type));
+
+                         env.borrow_mut().set(name.clone(), TypeInfo {
+                             var_type: func_type,
+                             is_mutable: false
+                         });
                     },
                     ASTNode::ClassDeclaration { name, .. } => {
                         let class_type = Type::Class(name.clone());
-                        env.borrow_mut().set(name.clone(), TypeInfo { var_type: class_type, is_mutable: false });
+                        env.borrow_mut().set(name.clone(), TypeInfo {
+                            var_type: class_type,
+                            is_mutable: false
+                        });
                     },
                     _ => {}
                 }
             }
-
-
 
             for stmt in statements {
                 Self::check_with_lifecycle(stmt, &env, None, &mut lifecycle)?;
@@ -641,43 +666,64 @@ impl TypeChecker {
 
     fn check_module(path: &ImportPath) -> Result<HashMap<String, Type>, String> {
         let file_path = match path {
-
             ImportPath::File(f) => {
                 if f.ends_with(".qc") || f.contains('/') || f.contains('\\') {
-
                     f.clone()
                 } else {
-
-
                     format!("q_packages/{}/init.qc", f)
                 }
             }
             ImportPath::Module(m) => {
-
                 m.join("/") + ".qc"
             }
         };
 
         let source = fs::read_to_string(&file_path).map_err(|e| {
-            format!(
-                "Type Check Error: Failed to read module '{}': {}",
-                file_path, e
-            )
+            format!("Type Check Error: Failed to read module '{}': {}", file_path, e)
         })?;
 
         let mut lexer = Lexer::new(&source);
-        let tokens = lexer
-            .tokenize()
-            .map_err(|e| format!("Module Lexer Error: {}", e))?;
+        let tokens = lexer.tokenize().map_err(|e| format!("Module Lexer Error: {}", e))?;
         let mut parser = Parser::new(tokens);
-        let ast = parser
-            .parse()
-            .map_err(|e| format!("Module Parser Error: {}", e))?;
+        let ast = parser.parse().map_err(|e| format!("Module Parser Error: {}", e))?;
 
         let module_env = Rc::new(RefCell::new(TypeEnvironment::new()));
         Self::prefill_environment(&module_env);
 
         if let ASTNode::Program(statements) = ast {
+            for stmt in &statements {
+                match stmt {
+                    ASTNode::FunctionDeclaration { name, parameters, return_type, .. } => {
+                        let param_types: Vec<Type> = parameters.iter().map(|p| p.param_type.clone()).collect();
+                        let rt = return_type.clone().unwrap_or(Type::Any);
+                        let func_type = Type::Function(param_types, Box::new(rt));
+
+                        module_env.borrow_mut().set(name.clone(), TypeInfo {
+                            var_type: func_type,
+                            is_mutable: false
+                        });
+                    },
+                    ASTNode::CircuitDeclaration { name, parameters, return_type, .. } => {
+                         let param_types: Vec<Type> = parameters.iter().map(|p| p.param_type.clone()).collect();
+                         let rt = return_type.clone().unwrap_or(Type::Any);
+                         let func_type = Type::Function(param_types, Box::new(rt));
+
+                         module_env.borrow_mut().set(name.clone(), TypeInfo {
+                             var_type: func_type,
+                             is_mutable: false
+                         });
+                    },
+                    ASTNode::ClassDeclaration { name, .. } => {
+                        let class_type = Type::Class(name.clone());
+                        module_env.borrow_mut().set(name.clone(), TypeInfo {
+                            var_type: class_type,
+                            is_mutable: false
+                        });
+                    },
+                    _ => {}
+                }
+            }
+
             for stmt in statements {
                 Self::check(&stmt, &module_env, None)?;
             }
@@ -685,10 +731,7 @@ impl TypeChecker {
             return Err("Module root is not a Program node".to_string());
         }
 
-        let module_types = module_env
-            .borrow()
-            .store
-            .iter()
+        let module_types = module_env.borrow().store.iter()
             .map(|(k, v)| (k.clone(), v.var_type.clone()))
             .collect();
 
@@ -1055,7 +1098,7 @@ impl TypeChecker {
                                     _ => false
                                 };
 
-                                if !is_compat && new_type != field_info.var_type {
+                                if !is_compat && !is_array_compat && new_type != field_info.var_type {
                                      return Err(format!(
                                         "Type Error: Cannot assign type {:?} to field '{}.{}' of type {:?}",
                                         new_type, class_name, member, field_info.var_type
@@ -1192,20 +1235,46 @@ impl TypeChecker {
             }
 
             ASTNode::NewInstance { class_name, arguments, loc } => {
+                let parts: Vec<&str> = class_name.split('.').collect();
 
-                let class_info = env.borrow().get(class_name)
-                    .ok_or_else(|| format!("Type Error at {}: Unknown class '{}'", loc, class_name))?;
+                let class_type = if parts.len() > 1 {
+                    let module_name = parts[0];
+                    let target_class = parts[1];
 
-                if !matches!(class_info.var_type, Type::Class(_)) {
+                    let module_info = env.borrow().get(module_name)
+                        .ok_or_else(|| format!("Type Error at {}: Unknown module '{}'", loc, module_name))?;
+
+                    if let Type::Module(mod_types) = &module_info.var_type {
+                        mod_types.get(target_class).cloned()
+                            .ok_or_else(|| format!("Type Error at {}: Module '{}' has no class '{}'", loc, module_name, target_class))?
+                    } else {
+                        return Err(format!("Type Error at {}: '{}' is not a module", loc, module_name));
+                    }
+                } else {
+                    env.borrow().get(class_name)
+                        .map(|info| info.var_type.clone())
+                        .ok_or_else(|| format!("Type Error at {}: Unknown class '{}'", loc, class_name))?
+                };
+
+                if !matches!(class_type, Type::Class(_)) {
                     return Err(format!("Type Error at {}: '{}' is not a class", loc, class_name));
                 }
 
+                let ctor_params: Vec<Type> = if let Type::Class(real_name) = &class_type {
+                    vec![]
+                } else {
+                    vec![]
+                };
 
                 for arg in arguments {
                     Self::check(arg, env, None)?;
                 }
 
-                Ok(Type::Instance(class_name.clone()))
+                if let Type::Class(name) = class_type {
+                    Ok(Type::Instance(name))
+                } else {
+                    Ok(Type::Instance(class_name.clone()))
+                }
             }
 
             ASTNode::MethodCall {

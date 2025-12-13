@@ -64,6 +64,7 @@ pub enum RuntimeValue {
         fields: Vec<ClassField>,
         methods: HashMap<String, ClassMethod>,
         constructor: Option<Box<ASTNode>>,
+        definition_env: Option<Rc<RefCell<Environment>>>,
     },
 
 
@@ -71,6 +72,7 @@ pub enum RuntimeValue {
         class_name: String,
         fields: HashMap<String, Rc<RefCell<RuntimeValue>>>,
         methods: HashMap<String, ClassMethod>,
+        definition_env: Option<Rc<RefCell<Environment>>>,
     },
 
     Register(Vec<Rc<RefCell<RuntimeValue>>>),
@@ -250,6 +252,25 @@ impl Environment {
 
     pub fn get_store_clone(&self) -> HashMap<String, Rc<RefCell<RuntimeValue>>> {
         self.store.clone()
+    }
+
+    pub fn define(&mut self, name: String, value: RuntimeValue) {
+        self.store.insert(name, Rc::new(RefCell::new(value)));
+    }
+
+    pub fn define_rc(&mut self, name: String, value: Rc<RefCell<RuntimeValue>>) {
+        self.store.insert(name, value);
+    }
+
+    pub fn assign(&mut self, name: &str, value: RuntimeValue) -> bool {
+        if let Some(slot) = self.store.get(name) {
+            *slot.borrow_mut() = value;
+            true
+        } else if let Some(outer) = &self.outer {
+            outer.borrow_mut().assign(name, value)
+        } else {
+            false
+        }
     }
 
     pub fn get_quantum_state(&self) -> Option<RuntimeValue> {
