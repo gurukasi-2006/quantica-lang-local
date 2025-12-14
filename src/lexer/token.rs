@@ -1,7 +1,7 @@
 #[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
 pub enum Token {
-    // Keywords
+    // Keywords - Core Language
     Let,
     Print,
     Echo,
@@ -17,7 +17,7 @@ pub enum Token {
     As,
     Module,
     Package,
-    
+
     // Control Flow
     If,
     Elif,
@@ -29,7 +29,7 @@ pub enum Token {
     While,
     Break,
     Continue,
-    
+
     // Error & Safety
     Try,
     Catch,
@@ -37,20 +37,20 @@ pub enum Token {
     Finally,
     Throw,
     Safe,
-    
+
     // Parallelism
     Parallel,
     Task,
     Await,
     Async,
     Yield,
-    
+
     // Logical Keywords
     And,
     Or,
     Not,
     Is,
-    
+
     // Quantum
     Quantum,
     Apply,
@@ -78,47 +78,64 @@ pub enum Token {
     RX,
     RY,
     RZ,
-    
-    
+
     // AI/ML
     Tensor,
     Train,
     Infer,
     Load,
     Save,
-    
+
     // Data Structures
     Struct,
     Enum,
-    
+
     // Modifiers
     Const,
     Public,
+    New,
+    This,
+    Super,
+    Extends,
     Private,
     Static,
     Extern,
     Inline,
-    
+
     // Meta
     Pragma,
     Sizeof,
     Typeof,
-    
+
     // Future Reserved
     Defer,
     Contract,
     Where,
     Generic,
-    
+
     // Types
-    Int, Int8, Int16, Int32, Int64, Int128,
-    Uint, Uint8, Uint16, Uint32, Uint64, Uint128,
-    Float, Float32, Float64,
-    Complex, Complex64, Complex128,
+    Int,
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    Int128,
+    Uint,
+    Uint8,
+    Uint16,
+    Uint32,
+    Uint64,
+    Uint128,
+    Float,
+    Float32,
+    Float64,
+    Complex,
+    Complex64,
+    Complex128,
     Bool,
     Bit,
     String,
-    
+
     // Literals
     IntLiteral(i64),
     FloatLiteral(f64),
@@ -127,28 +144,27 @@ pub enum Token {
     False,
     None,
     Any,
-    
+
     // Identifiers
     Identifier(String),
-    
-    
+
     // Operators
-    Plus,           // +
-    Minus,          // -
-    Star,           // *
-    Slash,          // /
-    Percent,        // %
-    Equal,          // =
-    ColonEqual,     // :=
-    EqualEqual,     // ==
-    NotEqual,       // !=
-    Less,           // 
-    Greater,        // >
-    LessEqual,      // <=
-    GreaterEqual,   // >=
-    Question,       // ?
-    Bang,           // !
-    
+    Plus,         // +
+    Minus,        // -
+    Star,         // *
+    Slash,        // /
+    Percent,      // %
+    Equal,        // =
+    ColonEqual,   // :=
+    EqualEqual,   // ==
+    NotEqual,     // !=
+    Less,         //
+    Greater,      // >
+    LessEqual,    // <=
+    GreaterEqual, // >=
+    Question,     // ?
+    Bang,         // !
+
     // Punctuation
     LeftParen,      // (
     RightParen,     // )
@@ -170,13 +186,13 @@ pub enum Token {
     DoublePipe,     // ||
     PipeRight,      // |>
     PipeDouble,     // =>>
-    Caret, //^
+    Caret,          //^
     TensorProduct,  // *** (quantum tensor product)
-    
+
     // Quantum Notation
-    KetState(String),  // |0}, |1}, |+}, |-}
-    BraState(String),  // {0|, {1|
-    
+    KetState(String), // |0}, |1}, |+}, |-}, etc.
+    BraState(String), // {0|, {1|, etc.
+
     // Special
     Newline,
     Indent,
@@ -195,8 +211,11 @@ pub struct TokenWithLocation {
 
 impl TokenWithLocation {
     pub fn new(token: Token, line: usize, column: usize, length: usize) -> Self {
-        Self { token, line, column, length }
+        Self {
+            token,
+            line,
+            column,
+            length,
+        }
     }
-
 }
-
