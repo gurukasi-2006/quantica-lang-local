@@ -9,14 +9,13 @@
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17852707.svg)](https://doi.org/10.5281/zenodo.17852707)
 
 
-
-**Quantica** is a high-performance, compiled programming language designed for the next generation of computing: **Quantum-Classical Hybrid** workflows. Written in Rust and powered by LLVM, it features native quantum primitives, sparse state simulation, and a syntax built for scientists and engineers.
+**A Hybrid Classical–Quantum Programming Language with a Unified Execution Model**
 
 ---
 
 ##  Why Quantica?
 
-Most quantum languages are just Python libraries. Quantica is a **compiled language** where quantum gates, measurements, and circuits are first-class citizens.
+Most quantum languages are just Python libraries. Quantica is a **Hybrid Classical–Quantum Programming Language** where quantum gates, measurements, and circuits are first-class citizens.
 
 * **Native Quantum Syntax:** Allocate registers (`quantum q[2]`) and apply gates (`apply Hadamard(q[0])`) directly in the language.
 * **Hybrid Runtime:** Mix classical logic (`if`, `while`, `functions`) with quantum state manipulation seamlessly.
@@ -32,7 +31,7 @@ Most quantum languages are just Python libraries. Quantica is a **compiled langu
 For the easiest setup, download the pre-built installer from our latest release.
 
 1.  Go to the **[Releases Page](https://github.com/Quantica-Foundation/quantica-lang/releases)**.
-2.  Download **`QuanticaInstaller-v0.1.1-alpha.exe`**.
+2.  Download **`Quantica_Setup-v0.2.0.exe`**.
 3.  Run the installer to set up Quantica and add it to your system PATH automatically.
 
 ### Option 2: Build from Source
