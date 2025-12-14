@@ -1,18 +1,16 @@
 /* src/type_checker.rs */
-
-use crate::parser::ast::{ASTNode, BinaryOperator, ImportSpec, Type, UnaryOperator};
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Rc;
-use std::string::String;
 use crate::error::{find_similar_names, levenshtein_distance};
 use crate::lexer::Lexer;
 use crate::parser::ast::ImportPath;
 use crate::parser::ast::Loc;
+use crate::parser::ast::{ASTNode, BinaryOperator, ImportSpec, Type, UnaryOperator};
 use crate::parser::Parser;
-use crate::qubit_lifecycle::{QubitLifecycleManager, QubitId, QubitOperation, QubitState};
+use crate::qubit_lifecycle::{QubitId, QubitLifecycleManager, QubitOperation, QubitState};
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fs;
-
+use std::rc::Rc;
+use std::string::String;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeInfo {
@@ -27,7 +25,6 @@ pub struct TypeEnvironment {
 }
 
 impl TypeEnvironment {
-
     pub fn new() -> Self {
         TypeEnvironment {
             store: HashMap::new(),
@@ -57,10 +54,11 @@ impl TypeEnvironment {
     }
 }
 
-pub struct TypeChecker{lifecycle_manager: QubitLifecycleManager,}
+pub struct TypeChecker {
+    lifecycle_manager: QubitLifecycleManager,
+}
 
 impl TypeChecker {
-
     pub fn prefill_environment(env: &Rc<RefCell<TypeEnvironment>>) {
         let mut env_mut = env.borrow_mut();
 
@@ -74,22 +72,21 @@ impl TypeChecker {
         let qubit_type = Type::Qubit;
         let none_type = Box::new(none.clone());
 
-
         env_mut.set(
             "print".to_string(),
             immut(Type::Function(vec![], Box::new(none.clone()))),
         );
-        env_mut.set("input".to_string(), immut(
-
-            Type::Function(vec![Type::Any], Box::new(Type::String))
-        ));
-        env_mut.set("split".to_string(), immut(
-
-            Type::Function(
+        env_mut.set(
+            "input".to_string(),
+            immut(Type::Function(vec![Type::Any], Box::new(Type::String))),
+        );
+        env_mut.set(
+            "split".to_string(),
+            immut(Type::Function(
                 vec![Type::String, Type::String],
-                Box::new(Type::Array(Box::new(Type::String)))
-            )
-        ));
+                Box::new(Type::Array(Box::new(Type::String))),
+            )),
+        );
         env_mut.set(
             "debug_state".to_string(),
             immut(Type::Function(
@@ -140,7 +137,6 @@ impl TypeChecker {
             immut(Type::Function(vec![any.clone()], Box::new(Type::Float))),
         );
 
-
         let single_qubit_gate = Type::Function(vec![qubit_type.clone()], none_type.clone());
         env_mut.set("hadamard".to_string(), immut(single_qubit_gate.clone()));
         env_mut.set("x".to_string(), immut(single_qubit_gate.clone()));
@@ -149,7 +145,6 @@ impl TypeChecker {
         env_mut.set("s".to_string(), immut(single_qubit_gate.clone()));
         env_mut.set("t".to_string(), immut(single_qubit_gate.clone()));
         env_mut.set("reset".to_string(), immut(single_qubit_gate.clone()));
-
 
         let two_qubit_gate = Type::Function(
             vec![qubit_type.clone(), qubit_type.clone()],
@@ -167,7 +162,6 @@ impl TypeChecker {
         );
         env_mut.set("ccx".to_string(), immut(three_qubit_gate.clone()));
         env_mut.set("toffoli".to_string(), immut(three_qubit_gate));
-
 
         let cphase_gate = Type::Function(
             vec![Type::Float, qubit_type.clone(), qubit_type.clone()],
@@ -187,9 +181,6 @@ impl TypeChecker {
         env_mut.set("ry".to_string(), immut(parameterized_gate.clone()));
         env_mut.set("rz".to_string(), immut(parameterized_gate.clone()));
 
-
-
-
         env_mut.set(
             "_graphics_create_canvas".to_string(),
             immut(Type::Function(
@@ -197,7 +188,6 @@ impl TypeChecker {
                 Box::new(Type::Int),
             )),
         );
-
 
         env_mut.set(
             "_graphics_set_background".to_string(),
@@ -207,12 +197,10 @@ impl TypeChecker {
             )),
         );
 
-
         env_mut.set(
             "_graphics_clear".to_string(),
             immut(Type::Function(vec![Type::Int], Box::new(Type::None))),
         );
-
 
         env_mut.set(
             "_graphics_draw_line".to_string(),
@@ -233,7 +221,6 @@ impl TypeChecker {
             )),
         );
 
-
         env_mut.set(
             "_graphics_draw_rect".to_string(),
             immut(Type::Function(
@@ -253,7 +240,6 @@ impl TypeChecker {
             )),
         );
 
-
         env_mut.set(
             "_graphics_draw_circle".to_string(),
             immut(Type::Function(
@@ -271,7 +257,6 @@ impl TypeChecker {
                 Box::new(Type::None),
             )),
         );
-
 
         env_mut.set(
             "_graphics_draw_text".to_string(),
@@ -291,7 +276,6 @@ impl TypeChecker {
             )),
         );
 
-
         env_mut.set(
             "_graphics_save_svg".to_string(),
             immut(Type::Function(
@@ -299,7 +283,6 @@ impl TypeChecker {
                 Box::new(Type::Int),
             )),
         );
-
 
         env_mut.set(
             "_graphics_save_png".to_string(),
@@ -309,18 +292,15 @@ impl TypeChecker {
             )),
         );
 
-
         env_mut.set(
             "_graphics_destroy_canvas".to_string(),
             immut(Type::Function(vec![Type::Int], Box::new(Type::None))),
         );
 
-
         env_mut.set(
             "_graphics_create_plot".to_string(),
             immut(Type::Function(vec![Type::Int], Box::new(Type::Int))),
         );
-
 
         env_mut.set(
             "_graphics_plot_set_data".to_string(),
@@ -335,7 +315,6 @@ impl TypeChecker {
             )),
         );
 
-
         env_mut.set(
             "_graphics_plot_set_title".to_string(),
             immut(Type::Function(
@@ -344,7 +323,6 @@ impl TypeChecker {
             )),
         );
 
-
         env_mut.set(
             "_graphics_plot_render".to_string(),
             immut(Type::Function(
@@ -352,7 +330,6 @@ impl TypeChecker {
                 Box::new(Type::Int),
             )),
         );
-
 
         env_mut.set(
             "_graphics_destroy_plot".to_string(),
@@ -370,8 +347,16 @@ impl TypeChecker {
         env_mut.set(
             "file_read".to_string(),
             immut(Type::Function(
-                vec![Type::String],      // Argument: (path)
-                Box::new(Type::String),  // Returns: String (content)
+                vec![Type::String],     // Argument: (path)
+                Box::new(Type::String), // Returns: String (content)
+            )),
+        );
+
+        env_mut.set(
+            "time".to_string(),
+            immut(Type::Function(
+                vec![],                 // No arguments
+                Box::new(Type::Float),  // Returns Float
             )),
         );
 
@@ -379,11 +364,43 @@ impl TypeChecker {
 
     pub fn check_program(node: &ASTNode) -> Result<(), String> {
         if let ASTNode::Program(statements) = node {
+            // 1. Create the Environment
             let env = Rc::new(RefCell::new(TypeEnvironment::new()));
             let mut lifecycle = QubitLifecycleManager::new(true);
 
+            // 2. Prefill Standard Built-ins (print, etc.)
             Self::prefill_environment(&env);
 
+            // 3. FORCE Register file I/O (Fixes the 'Undefined variable' error)
+            {
+                let mut env_mut = env.borrow_mut();
+
+                // Manually add file_read
+                env_mut.set(
+                    "file_read".to_string(),
+                    TypeInfo {
+                        var_type: Type::Function(
+                            vec![Type::String],      // Arg: path
+                            Box::new(Type::String)   // Ret: content
+                        ),
+                        is_mutable: false
+                    }
+                );
+
+                // Manually add file_write
+                env_mut.set(
+                    "file_write".to_string(),
+                    TypeInfo {
+                        var_type: Type::Function(
+                            vec![Type::String, Type::String], // Args: path, content
+                            Box::new(Type::None)
+                        ),
+                        is_mutable: false
+                    }
+                );
+            }
+
+            // 4. Pass 1: Register Global Functions & Classes
             for stmt in statements {
                 match stmt {
                     ASTNode::FunctionDeclaration { name, parameters, return_type, .. } => {
@@ -417,6 +434,7 @@ impl TypeChecker {
                 }
             }
 
+            // 5. Pass 2: Check Statements (Bodies)
             for stmt in statements {
                 Self::check_with_lifecycle(stmt, &env, None, &mut lifecycle)?;
             }
@@ -426,6 +444,7 @@ impl TypeChecker {
             Err("Expected Program node".to_string())
         }
     }
+
     fn check_with_lifecycle(
         node: &ASTNode,
         env: &Rc<RefCell<TypeEnvironment>>,
@@ -433,8 +452,11 @@ impl TypeChecker {
         lifecycle: &mut QubitLifecycleManager,
     ) -> Result<Type, String> {
         match node {
-
-            ASTNode::QuantumDeclaration { name, size, initial_state } => {
+            ASTNode::QuantumDeclaration {
+                name,
+                size,
+                initial_state,
+            } => {
                 let register_size = if let Some(size_expr) = size {
                     if let ASTNode::IntLiteral(n) = &**size_expr {
                         *n as usize
@@ -445,19 +467,16 @@ impl TypeChecker {
                     1
                 };
 
-                lifecycle.register_qubits(
-                    name,
-                    register_size,
-                    QubitState::Classical(false)
-                );
-
+                lifecycle.register_qubits(name, register_size, QubitState::Classical(false));
 
                 Self::check(node, env, expected_return_type)
             }
 
-
-            ASTNode::Apply { gate_expr, arguments, loc } => {
-
+            ASTNode::Apply {
+                gate_expr,
+                arguments,
+                loc,
+            } => {
                 let qubit_ids = Self::extract_qubit_ids(arguments)?;
                 let gate_name = Self::extract_gate_name(gate_expr)?;
                 let is_controlled = Self::is_controlled_gate(gate_expr);
@@ -465,58 +484,72 @@ impl TypeChecker {
                 if is_controlled {
                     let num_controls = Self::count_controls(gate_expr);
                     let (controls, targets) = qubit_ids.split_at(num_controls);
-                    lifecycle.record_controlled_gate(controls, targets, &gate_name, *loc)
+                    lifecycle
+                        .record_controlled_gate(controls, targets, &gate_name, *loc)
                         .map_err(|e| e.to_string())?;
                 } else {
                     for qubit_id in &qubit_ids {
-                        lifecycle.record_operation(
-                            qubit_id,
-                            QubitOperation::ApplyGate(gate_name.clone()),
-                            *loc
-                        ).map_err(|e| e.to_string())?;
+                        lifecycle
+                            .record_operation(
+                                qubit_id,
+                                QubitOperation::ApplyGate(gate_name.clone()),
+                                *loc,
+                            )
+                            .map_err(|e| e.to_string())?;
                     }
                 }
 
-
                 Self::check(node, env, expected_return_type)
             }
-
 
             ASTNode::Measure(qubit_expr) => {
                 let qubit_ids = Self::extract_qubit_ids(&[*qubit_expr.clone()])?;
                 let loc = Self::get_node_location(qubit_expr);
 
                 for qubit_id in &qubit_ids {
-                    lifecycle.record_operation(
-                        qubit_id,
-                        QubitOperation::Measure,
-                        loc
-                    ).map_err(|e| e.to_string())?;
+                    lifecycle
+                        .record_operation(qubit_id, QubitOperation::Measure, loc)
+                        .map_err(|e| e.to_string())?;
                 }
 
                 Self::check(node, env, expected_return_type)
             }
 
-
-            ASTNode::LetDeclaration { name, type_annotation, value, is_mutable, .. } => {
-
+            ASTNode::LetDeclaration {
+                name,
+                type_annotation,
+                value,
+                is_mutable,
+                ..
+            } => {
                 let value_type = Self::check_with_lifecycle(value, env, None, lifecycle)?;
-
 
                 let final_type = match type_annotation {
                     Some(expected_type) => {
-                        if value_type != *expected_type && value_type != Type::None && *expected_type != Type::Any && value_type != Type::Any {
-                             return Err(format!("Type Error: Variable '{}' annotated as {:?} but got {:?}", name, expected_type, value_type));
+                        if value_type != *expected_type
+                            && value_type != Type::None
+                            && *expected_type != Type::Any
+                            && value_type != Type::Any
+                        {
+                            return Err(format!(
+                                "Type Error: Variable '{}' annotated as {:?} but got {:?}",
+                                name, expected_type, value_type
+                            ));
                         }
                         expected_type.clone()
                     }
                     None => value_type,
                 };
 
-                env.borrow_mut().set(name.clone(), TypeInfo { var_type: final_type, is_mutable: *is_mutable });
+                env.borrow_mut().set(
+                    name.clone(),
+                    TypeInfo {
+                        var_type: final_type,
+                        is_mutable: *is_mutable,
+                    },
+                );
                 Ok(Type::None)
             }
-
 
             ASTNode::Block(statements) => {
                 for stmt in statements {
@@ -525,21 +558,30 @@ impl TypeChecker {
                 Ok(Type::None)
             }
 
-
-            ASTNode::If { condition, then_block, elif_blocks, else_block } => {
-
+            ASTNode::If {
+                condition,
+                then_block,
+                elif_blocks,
+                else_block,
+            } => {
                 let cond_type = Self::check(condition, env, None)?;
                 if cond_type != Type::Bool {
-                    return Err(format!("Type Error: 'if' condition must be Bool, got {:?}", cond_type));
+                    return Err(format!(
+                        "Type Error: 'if' condition must be Bool, got {:?}",
+                        cond_type
+                    ));
                 }
 
-
-                let then_type = Self::check_with_lifecycle(then_block, env, expected_return_type, lifecycle)?;
+                let then_type =
+                    Self::check_with_lifecycle(then_block, env, expected_return_type, lifecycle)?;
 
                 for (elif_cond, elif_body) in elif_blocks {
                     let elif_cond_type = Self::check(elif_cond, env, None)?;
                     if elif_cond_type != Type::Bool {
-                        return Err(format!("Type Error: 'elif' condition must be Bool, got {:?}", elif_cond_type));
+                        return Err(format!(
+                            "Type Error: 'elif' condition must be Bool, got {:?}",
+                            elif_cond_type
+                        ));
                     }
                     Self::check_with_lifecycle(elif_body, env, expected_return_type, lifecycle)?;
                 }
@@ -550,19 +592,23 @@ impl TypeChecker {
                 Ok(then_type)
             }
 
-
             ASTNode::While { condition, body } => {
                 let cond_type = Self::check(condition, env, None)?;
                 if cond_type != Type::Bool {
-                    return Err(format!("Type Error: 'while' condition must be Bool, got {:?}", cond_type));
+                    return Err(format!(
+                        "Type Error: 'while' condition must be Bool, got {:?}",
+                        cond_type
+                    ));
                 }
                 Self::check_with_lifecycle(body, env, expected_return_type, lifecycle)?;
                 Ok(Type::None)
             }
 
-
-            ASTNode::For { variable, iterator, body } => {
-
+            ASTNode::For {
+                variable,
+                iterator,
+                body,
+            } => {
                 let iterator_type = Self::check(iterator, env, None)?;
                 let element_type = match iterator_type {
                     Type::Array(inner) => *inner,
@@ -570,33 +616,38 @@ impl TypeChecker {
                     Type::Dict => Type::String,
                     Type::Custom(name) if name == "range" => Type::Int,
                     Type::Any => Type::Any,
-                    _ => return Err(format!("Type Error: Cannot iterate over {:?}", iterator_type)),
+                    _ => {
+                        return Err(format!(
+                            "Type Error: Cannot iterate over {:?}",
+                            iterator_type
+                        ))
+                    }
                 };
 
-
                 let loop_env = Rc::new(RefCell::new(TypeEnvironment::new_enclosed(env.clone())));
-                loop_env.borrow_mut().set(variable.clone(), TypeInfo { var_type: element_type, is_mutable: false });
-
+                loop_env.borrow_mut().set(
+                    variable.clone(),
+                    TypeInfo {
+                        var_type: element_type,
+                        is_mutable: false,
+                    },
+                );
 
                 Self::check_with_lifecycle(body, &loop_env, expected_return_type, lifecycle)?;
                 Ok(Type::None)
             }
 
-
-             ASTNode::Return(value_expr) => {
+            ASTNode::Return(value_expr) => {
                 if let Some(expr) = value_expr {
-
-                     let _ = Self::check_with_lifecycle(expr, env, None, lifecycle)?;
+                    let _ = Self::check_with_lifecycle(expr, env, None, lifecycle)?;
                 }
 
                 Self::check(node, env, expected_return_type)
             }
 
-
-            _ => Self::check(node, env, expected_return_type)
+            _ => Self::check(node, env, expected_return_type),
         }
     }
-
 
     fn extract_qubit_ids(arguments: &[ASTNode]) -> Result<Vec<QubitId>, String> {
         let mut ids = Vec::new();
@@ -611,7 +662,6 @@ impl TypeChecker {
                     }
                 }
                 ASTNode::Identifier { name, .. } => {
-
                     ids.push(QubitId::new(name.clone(), 0));
                 }
                 _ => {}
@@ -621,39 +671,35 @@ impl TypeChecker {
         Ok(ids)
     }
 
-
     fn extract_gate_name(gate_expr: &ASTNode) -> Result<String, String> {
         match gate_expr {
             ASTNode::Gate { name, .. } => Ok(name.clone()),
             ASTNode::ParameterizedGate { name, .. } => Ok(name.clone()),
             ASTNode::Controlled { gate_expr, .. } => Self::extract_gate_name(gate_expr),
             ASTNode::Dagger { gate_expr, .. } => Self::extract_gate_name(gate_expr),
-            _ => Err("Invalid gate expression".to_string())
+            _ => Err("Invalid gate expression".to_string()),
         }
     }
 
-
     fn is_controlled_gate(gate_expr: &ASTNode) -> bool {
-        matches!(gate_expr, ASTNode::Controlled { .. }) ||
-        matches!(gate_expr, ASTNode::Dagger { gate_expr: inner, .. }
+        matches!(gate_expr, ASTNode::Controlled { .. })
+            || matches!(gate_expr, ASTNode::Dagger { gate_expr: inner, .. }
             if Self::is_controlled_gate(inner))
     }
-
 
     fn count_controls(gate_expr: &ASTNode) -> usize {
         match gate_expr {
             ASTNode::Controlled { gate_expr, .. } => 1 + Self::count_controls(gate_expr),
             ASTNode::Dagger { gate_expr, .. } => Self::count_controls(gate_expr),
-            _ => 0
+            _ => 0,
         }
     }
-
 
     fn get_node_location(node: &ASTNode) -> Loc {
         match node {
             ASTNode::ArrayAccess { loc, .. } => *loc,
             ASTNode::Identifier { loc, .. } => *loc,
-            _ => Loc { line: 0, column: 0 }
+            _ => Loc { line: 0, column: 0 },
         }
     }
 
@@ -673,19 +719,24 @@ impl TypeChecker {
                     format!("q_packages/{}/init.qc", f)
                 }
             }
-            ImportPath::Module(m) => {
-                m.join("/") + ".qc"
-            }
+            ImportPath::Module(m) => m.join("/") + ".qc",
         };
 
         let source = fs::read_to_string(&file_path).map_err(|e| {
-            format!("Type Check Error: Failed to read module '{}': {}", file_path, e)
+            format!(
+                "Type Check Error: Failed to read module '{}': {}",
+                file_path, e
+            )
         })?;
 
         let mut lexer = Lexer::new(&source);
-        let tokens = lexer.tokenize().map_err(|e| format!("Module Lexer Error: {}", e))?;
+        let tokens = lexer
+            .tokenize()
+            .map_err(|e| format!("Module Lexer Error: {}", e))?;
         let mut parser = Parser::new(tokens);
-        let ast = parser.parse().map_err(|e| format!("Module Parser Error: {}", e))?;
+        let ast = parser
+            .parse()
+            .map_err(|e| format!("Module Parser Error: {}", e))?;
 
         let module_env = Rc::new(RefCell::new(TypeEnvironment::new()));
         Self::prefill_environment(&module_env);
@@ -693,33 +744,56 @@ impl TypeChecker {
         if let ASTNode::Program(statements) = ast {
             for stmt in &statements {
                 match stmt {
-                    ASTNode::FunctionDeclaration { name, parameters, return_type, .. } => {
-                        let param_types: Vec<Type> = parameters.iter().map(|p| p.param_type.clone()).collect();
+                    ASTNode::FunctionDeclaration {
+                        name,
+                        parameters,
+                        return_type,
+                        ..
+                    } => {
+                        let param_types: Vec<Type> =
+                            parameters.iter().map(|p| p.param_type.clone()).collect();
                         let rt = return_type.clone().unwrap_or(Type::Any);
                         let func_type = Type::Function(param_types, Box::new(rt));
 
-                        module_env.borrow_mut().set(name.clone(), TypeInfo {
-                            var_type: func_type,
-                            is_mutable: false
-                        });
-                    },
-                    ASTNode::CircuitDeclaration { name, parameters, return_type, .. } => {
-                         let param_types: Vec<Type> = parameters.iter().map(|p| p.param_type.clone()).collect();
-                         let rt = return_type.clone().unwrap_or(Type::Any);
-                         let func_type = Type::Function(param_types, Box::new(rt));
+                        module_env.borrow_mut().set(
+                            name.clone(),
+                            TypeInfo {
+                                var_type: func_type,
+                                is_mutable: false,
+                            },
+                        );
+                    }
+                    ASTNode::CircuitDeclaration {
+                        name,
+                        parameters,
+                        return_type,
+                        ..
+                    } => {
+                        let param_types: Vec<Type> =
+                            parameters.iter().map(|p| p.param_type.clone()).collect();
+                        let rt = return_type.clone().unwrap_or(Type::Any);
+                        let func_type = Type::Function(param_types, Box::new(rt));
 
-                         module_env.borrow_mut().set(name.clone(), TypeInfo {
-                             var_type: func_type,
-                             is_mutable: false
-                         });
-                    },
+                        module_env.borrow_mut().set(
+                            name.clone(),
+                            TypeInfo {
+                                var_type: func_type,
+                                is_mutable: false,
+                            },
+                        );
+                    }
                     ASTNode::ClassDeclaration { name, .. } => {
                         let class_type = Type::Class(name.clone());
-                        module_env.borrow_mut().set(name.clone(), TypeInfo {
-                            var_type: class_type,
-                            is_mutable: false
-                        });
-                    },
+                        module_env.borrow_mut().set(
+                            name.clone(),
+                            TypeInfo {
+                                var_type: class_type,
+                                is_mutable: false,
+                            },
+                        );
+
+                        /* Self::check(stmt, &module_env, None)?; */
+                    }
                     _ => {}
                 }
             }
@@ -731,47 +805,39 @@ impl TypeChecker {
             return Err("Module root is not a Program node".to_string());
         }
 
-        let module_types = module_env.borrow().store.iter()
+        let module_types = module_env
+            .borrow()
+            .store
+            .iter()
             .map(|(k, v)| (k.clone(), v.var_type.clone()))
             .collect();
 
         Ok(module_types)
     }
 
-    fn resolve_method(
-        env: &Rc<RefCell<TypeEnvironment>>,
-        method_key: &str,
-    ) -> Option<Type> {
-
+    fn resolve_method(env: &Rc<RefCell<TypeEnvironment>>, method_key: &str) -> Option<Type> {
         if let Some(info) = env.borrow().get(method_key) {
             return Some(info.var_type.clone());
         }
-
-
 
         let mut current_env = Some(env.clone());
 
         while let Some(env_rc) = current_env {
             let env_ref = env_rc.borrow();
 
-
             for info in env_ref.store.values() {
-
                 if let Type::Module(module_map) = &info.var_type {
-
                     if let Some(method_type) = module_map.get(method_key) {
                         return Some(method_type.clone());
                     }
                 }
             }
 
-
             current_env = env_ref.outer.clone();
         }
 
         None
     }
-
 
     fn check_gate_expression(
         node: &ASTNode,
@@ -795,7 +861,6 @@ impl TypeChecker {
                     }
                 }
 
-
                 Err(format!(
                     "Type Error at {}: Unknown quantum gate '{}'.",
                     loc, name
@@ -803,7 +868,6 @@ impl TypeChecker {
             }
 
             ASTNode::Dagger { gate_expr, .. } => {
-
                 let inner_gate_type = Self::check_gate_expression(gate_expr, env)?;
 
                 if let Type::Function(..) = inner_gate_type {
@@ -817,22 +881,15 @@ impl TypeChecker {
             }
 
             ASTNode::Controlled { gate_expr, loc } => {
-
                 let inner_gate_type = Self::check_gate_expression(gate_expr, env)?;
 
                 match inner_gate_type {
                     Type::Function(mut params, ret_type) => {
-
-
-
-
                         if params.is_empty() {
                             return Err(format!("Type Error at {}: 'controlled' target gate must take at least one argument.", loc));
                         }
 
-
                         params.insert(0, Type::Qubit);
-
 
                         Ok(Type::Function(params, ret_type))
                     }
@@ -850,7 +907,6 @@ impl TypeChecker {
             } => {
                 let gate_name_lower = name.to_lowercase();
 
-
                 let gate_info = env.borrow().get(&gate_name_lower).ok_or_else(|| {
                     format!(
                         "Type Error at {}: Unknown parameterized gate '{}'.",
@@ -860,9 +916,6 @@ impl TypeChecker {
 
                 match gate_info.var_type {
                     Type::Function(param_types, return_type) => {
-
-
-
                         if parameters.len() > param_types.len() {
                             return Err(format!(
                             "Type Error at {}: Gate '{}' takes at most {} parameters, but got {}",
@@ -870,11 +923,9 @@ impl TypeChecker {
                         ));
                         }
 
-
                         for (i, param_expr) in parameters.iter().enumerate() {
                             let param_type = Self::check(param_expr, env, None)?;
                             let expected_type = &param_types[i];
-
 
                             if param_type != *expected_type
                                 && !(*expected_type == Type::Float && param_type == Type::Int)
@@ -885,7 +936,6 @@ impl TypeChecker {
                             ));
                             }
                         }
-
 
                         let remaining_params = param_types[parameters.len()..].to_vec();
                         Ok(Type::Function(remaining_params, return_type))
@@ -901,14 +951,12 @@ impl TypeChecker {
         }
     }
 
-
     pub fn check(
         node: &ASTNode,
         env: &Rc<RefCell<TypeEnvironment>>,
         expected_return_type: Option<&Type>,
     ) -> Result<Type, String> {
         match node {
-
             ASTNode::IntLiteral(_) => Ok(Type::Int),
             ASTNode::FloatLiteral(_) => Ok(Type::Float),
             ASTNode::StringLiteral(_) => Ok(Type::String),
@@ -917,7 +965,6 @@ impl TypeChecker {
             ASTNode::DictLiteral(_) => Ok(Type::Dict),
             ASTNode::QuantumKet(_) => Ok(Type::QuantumRegister(Some(1))),
             ASTNode::QuantumBra(_) => Err("Bra notation is not yet supported.".to_string()),
-
 
             ASTNode::LetDeclaration {
                 name,
@@ -935,7 +982,6 @@ impl TypeChecker {
                             && *expected_type != Type::Any
                             && value_type != Type::Any
                         {
-
                             let is_quantum_compat = matches!(
                                 (&value_type, expected_type),
                                 (Type::QuantumRegister(_), Type::QuantumRegister(None))
@@ -952,7 +998,6 @@ impl TypeChecker {
                                     name, expected_type, value_type
                                 ));
                             }
-
                         }
                         expected_type.clone()
                     }
@@ -1066,165 +1111,233 @@ impl TypeChecker {
                         }
                     }
                     ASTNode::MemberAccess { object, member } => {
-
                         let object_type = Self::check(object, env, Option::None)?;
 
-
-                        let class_name = match object_type {
-                            Type::Instance(name) | Type::Custom(name) => name,
-                            _ => return Err(format!("Type Error: Cannot assign to member '{}' of non-object type {:?}", member, object_type)),
+                        let class_name_opt = match &object_type {
+                            Type::Instance(name) | Type::Custom(name) => Some(name.clone()),
+                            _ => None,
                         };
 
-
-                        let field_key = format!("{}::{}", class_name, member);
-
-
-                        if let Some(field_info) = env.borrow().get(&field_key) {
-
-                            if !field_info.is_mutable {
-                                return Err(format!("Mutability Error: Field '{}.{}' is immutable.", class_name, member));
-                            }
-
-
-                            if field_info.var_type != new_type && field_info.var_type != Type::Any {
-
-                                let is_compat = matches!((&new_type, &field_info.var_type),
-                                    (Type::Int, Type::Float) |
-                                    (Type::QuantumRegister(_), Type::QuantumRegister(None))
-                                );
-
-                                let is_array_compat = match (&field_info.var_type, &new_type) {
-                                    (Type::Array(t1), Type::Array(t2)) => **t1 == Type::Any || **t2 == Type::Any,
-                                    _ => false
-                                };
-
-                                if !is_compat && !is_array_compat && new_type != field_info.var_type {
-                                     return Err(format!(
-                                        "Type Error: Cannot assign type {:?} to field '{}.{}' of type {:?}",
-                                        new_type, class_name, member, field_info.var_type
-                                    ));
+                        if let Some(mut class_name) = class_name_opt {
+                            // Handle aliased class names (e.g. ai.Dataset -> Dataset)
+                            if class_name.contains('.') {
+                                if let Some(real_name) = class_name.split('.').last() {
+                                    class_name = real_name.to_string();
                                 }
                             }
-                            Ok(Type::None)
+
+                            let field_key = format!("{}::{}", class_name, member);
+
+                            // Check current environment first
+                            if let Some(field_info) = env.borrow().get(&field_key) {
+                                return Ok(field_info.var_type.clone());
+                            }
+
+                            // CRITICAL FIX: Check inside imported modules
+                            // The field definition might be inside a module's type map
+                            let mut found_type = None;
+                            let mut current_env = Some(env.clone());
+
+                            while let Some(env_rc) = current_env {
+                                let env_ref = env_rc.borrow();
+                                for info in env_ref.store.values() {
+                                    if let Type::Module(mod_types) = &info.var_type {
+                                        if let Some(field_type) = mod_types.get(&field_key) {
+                                            found_type = Some(field_type.clone());
+                                            break;
+                                        }
+                                    }
+                                }
+                                if found_type.is_some() {
+                                    break;
+                                }
+                                current_env = env_ref.outer.clone();
+                            }
+
+                            if let Some(t) = found_type {
+                                return Ok(t);
+                            }
+
+                            return Err(format!(
+                                "Type Error: Class '{}' has no member named '{}'",
+                                class_name, member
+                            ));
+                        }
+
+                        if let Type::Module(module_types) = object_type {
+                            match module_types.get(member) {
+                                Some(t) => Ok(t.clone()),
+                                None => Err(format!(
+                                    "Type Error: Module has no member named '{}'",
+                                    member
+                                )),
+                            }
+                        } else if member == "length" {
+                            match object_type {
+                                Type::Array(_) | Type::String | Type::Dict => Ok(Type::Int),
+                                Type::QuantumRegister(Some(_size)) => Ok(Type::Int),
+                                Type::QuantumRegister(None) => Ok(Type::Int),
+                                _ => Err(format!(
+                                    "Type Error: Cannot get .length of type {:?}",
+                                    object_type
+                                )),
+                            }
                         } else {
-
-
-
-                            Err(format!("Type Error: Class '{}' has no field named '{}'", class_name, member))
+                            if let Type::Dict = object_type {
+                                Ok(Type::Any)
+                            } else {
+                                Err(format!(
+                                    "Type Error: Type {:?} has no member named '{}'",
+                                    object_type, member
+                                ))
+                            }
                         }
                     }
                     _ => Err("Type Error: Assignment target must be an identifier or subscript expression.".to_string())
                 }
             }
-            ASTNode::Identifier { name, loc } => {
-                match env.borrow().get(name) {
-                    Some(info) => Ok(info.var_type.clone()),
-                    None => {
+            ASTNode::Identifier { name, loc } => match env.borrow().get(name) {
+                Some(info) => Ok(info.var_type.clone()),
+                None => {
+                    let mut all_names = Vec::new();
+                    let mut current_env = Some(env.clone());
 
-                        let mut all_names = Vec::new();
-                        let mut current_env = Some(env.clone());
-
-                        while let Some(env_rc) = current_env {
-                            let env_ref = env_rc.borrow();
-                            for var_name in env_ref.store.keys() {
-                                all_names.push(var_name.clone());
-                            }
-                            current_env = env_ref.outer.clone();
+                    while let Some(env_rc) = current_env {
+                        let env_ref = env_rc.borrow();
+                        for var_name in env_ref.store.keys() {
+                            all_names.push(var_name.clone());
                         }
-
-
-                        let suggestions = find_similar_names(name, &all_names);
-
-                        let mut error_msg = format!("Undefined variable '{}'", name);
-                        if !suggestions.is_empty() {
-                            error_msg.push_str(&format!(
-                                ". Did you mean: {}?",
-                                suggestions.join(", ")
-                            ));
-                        }
-
-                        Err(format!(
-                            "Type Error at {}: {}",
-                            loc, error_msg
-                        ))
+                        current_env = env_ref.outer.clone();
                     }
+
+                    let suggestions = find_similar_names(name, &all_names);
+
+                    let mut error_msg = format!("Undefined variable '{}'", name);
+                    if !suggestions.is_empty() {
+                        error_msg.push_str(&format!(". Did you mean: {}?", suggestions.join(", ")));
+                    }
+
+                    Err(format!("Type Error at {}: {}", loc, error_msg))
                 }
-            }
-            ASTNode::ClassDeclaration { name, fields, methods, constructor, .. } => {
+            },
+            ASTNode::ClassDeclaration {
+                name,
+                fields,
+                methods,
+                constructor,
+                ..
+            } => {
                 let class_type = Type::Class(name.clone());
                 env.borrow_mut().set(
                     name.clone(),
-                    TypeInfo { var_type: class_type, is_mutable: false }
+                    TypeInfo {
+                        var_type: class_type,
+                        is_mutable: false,
+                    },
                 );
 
                 let class_env = Rc::new(RefCell::new(TypeEnvironment::new_enclosed(env.clone())));
 
-
                 for field in fields {
                     class_env.borrow_mut().set(
                         field.name.clone(),
-                        TypeInfo { var_type: field.field_type.clone(), is_mutable: true }
+                        TypeInfo {
+                            var_type: field.field_type.clone(),
+                            is_mutable: true,
+                        },
                     );
                     let global_field_key = format!("{}::{}", name, field.name);
                     env.borrow_mut().set(
                         global_field_key,
-                        TypeInfo { var_type: field.field_type.clone(), is_mutable: true }
+                        TypeInfo {
+                            var_type: field.field_type.clone(),
+                            is_mutable: true,
+                        },
                     );
                 }
 
-
                 for method in methods {
-                    let method_param_types: Vec<Type> = method.parameters.iter()
+                    let method_param_types: Vec<Type> = method
+                        .parameters
+                        .iter()
                         .map(|p| p.param_type.clone())
                         .collect();
                     let method_return_type = method.return_type.clone().unwrap_or(Type::None);
-                    let method_func_type = Type::Function(method_param_types, Box::new(method_return_type));
+                    let method_func_type =
+                        Type::Function(method_param_types, Box::new(method_return_type));
 
                     let global_method_key = format!("{}::{}", name, method.name);
                     env.borrow_mut().set(
                         global_method_key,
-                        TypeInfo { var_type: method_func_type, is_mutable: false }
+                        TypeInfo {
+                            var_type: method_func_type,
+                            is_mutable: false,
+                        },
                     );
                 }
 
-
                 if let Some(constructor_node) = constructor {
-                    if let ASTNode::FunctionDeclaration { body, parameters, .. } = &**constructor_node {
-                        let constructor_env = Rc::new(RefCell::new(TypeEnvironment::new_enclosed(class_env.clone())));
+                    if let ASTNode::FunctionDeclaration {
+                        body, parameters, ..
+                    } = &**constructor_node
+                    {
+                        let constructor_env = Rc::new(RefCell::new(TypeEnvironment::new_enclosed(
+                            class_env.clone(),
+                        )));
 
-
-                        let param_types: Vec<Type> = parameters.iter().map(|p| p.param_type.clone()).collect();
+                        let param_types: Vec<Type> =
+                            parameters.iter().map(|p| p.param_type.clone()).collect();
                         let ctor_type = Type::Function(param_types, Box::new(Type::None));
                         env.borrow_mut().set(
                             format!("{}::init", name),
-                            TypeInfo { var_type: ctor_type, is_mutable: false }
+                            TypeInfo {
+                                var_type: ctor_type,
+                                is_mutable: false,
+                            },
                         );
 
-                        constructor_env.borrow_mut().set("self".to_string(), TypeInfo {
-                            var_type: Type::Instance(name.clone()), is_mutable: false,
-                        });
+                        constructor_env.borrow_mut().set(
+                            "self".to_string(),
+                            TypeInfo {
+                                var_type: Type::Instance(name.clone()),
+                                is_mutable: false,
+                            },
+                        );
 
                         for param in parameters {
-                            constructor_env.borrow_mut().set(param.name.clone(), TypeInfo {
-                                var_type: param.param_type.clone(), is_mutable: false,
-                            });
+                            constructor_env.borrow_mut().set(
+                                param.name.clone(),
+                                TypeInfo {
+                                    var_type: param.param_type.clone(),
+                                    is_mutable: false,
+                                },
+                            );
                         }
                         Self::check(body, &constructor_env, Some(&Type::None))?;
                     }
                 }
 
-
                 for method in methods {
-                    let method_env = Rc::new(RefCell::new(TypeEnvironment::new_enclosed(class_env.clone())));
+                    let method_env = Rc::new(RefCell::new(TypeEnvironment::new_enclosed(
+                        class_env.clone(),
+                    )));
 
-                    method_env.borrow_mut().set("self".to_string(), TypeInfo {
-                        var_type: Type::Instance(name.clone()), is_mutable: false,
-                    });
+                    method_env.borrow_mut().set(
+                        "self".to_string(),
+                        TypeInfo {
+                            var_type: Type::Instance(name.clone()),
+                            is_mutable: false,
+                        },
+                    );
 
                     for param in &method.parameters {
-                        method_env.borrow_mut().set(param.name.clone(), TypeInfo {
-                            var_type: param.param_type.clone(), is_mutable: false,
-                        });
+                        method_env.borrow_mut().set(
+                            param.name.clone(),
+                            TypeInfo {
+                                var_type: param.param_type.clone(),
+                                is_mutable: false,
+                            },
+                        );
                     }
 
                     let return_type = method.return_type.as_ref().unwrap_or(&Type::None);
@@ -1234,30 +1347,48 @@ impl TypeChecker {
                 Ok(Type::None)
             }
 
-            ASTNode::NewInstance { class_name, arguments, loc } => {
+            ASTNode::NewInstance {
+                class_name,
+                arguments,
+                loc,
+            } => {
                 let parts: Vec<&str> = class_name.split('.').collect();
 
                 let class_type = if parts.len() > 1 {
                     let module_name = parts[0];
                     let target_class = parts[1];
 
-                    let module_info = env.borrow().get(module_name)
-                        .ok_or_else(|| format!("Type Error at {}: Unknown module '{}'", loc, module_name))?;
+                    let module_info = env.borrow().get(module_name).ok_or_else(|| {
+                        format!("Type Error at {}: Unknown module '{}'", loc, module_name)
+                    })?;
 
                     if let Type::Module(mod_types) = &module_info.var_type {
-                        mod_types.get(target_class).cloned()
-                            .ok_or_else(|| format!("Type Error at {}: Module '{}' has no class '{}'", loc, module_name, target_class))?
+                        mod_types.get(target_class).cloned().ok_or_else(|| {
+                            format!(
+                                "Type Error at {}: Module '{}' has no class '{}'",
+                                loc, module_name, target_class
+                            )
+                        })?
                     } else {
-                        return Err(format!("Type Error at {}: '{}' is not a module", loc, module_name));
+                        return Err(format!(
+                            "Type Error at {}: '{}' is not a module",
+                            loc, module_name
+                        ));
                     }
                 } else {
-                    env.borrow().get(class_name)
+                    env.borrow()
+                        .get(class_name)
                         .map(|info| info.var_type.clone())
-                        .ok_or_else(|| format!("Type Error at {}: Unknown class '{}'", loc, class_name))?
+                        .ok_or_else(|| {
+                            format!("Type Error at {}: Unknown class '{}'", loc, class_name)
+                        })?
                 };
 
                 if !matches!(class_type, Type::Class(_)) {
-                    return Err(format!("Type Error at {}: '{}' is not a class", loc, class_name));
+                    return Err(format!(
+                        "Type Error at {}: '{}' is not a class",
+                        loc, class_name
+                    ));
                 }
 
                 let ctor_params: Vec<Type> = if let Type::Class(real_name) = &class_type {
@@ -1286,23 +1417,17 @@ impl TypeChecker {
                 let object_type = Self::check(object, env, None)?;
 
                 match object_type {
-
                     Type::Instance(class_name) | Type::Custom(class_name) => {
-
                         let method_key = format!("{}::{}", class_name, method_name);
 
-
-
                         if let Some(method_type) = Self::resolve_method(env, &method_key) {
-                             if let Type::Function(param_types, return_type) = method_type {
-
+                            if let Type::Function(param_types, return_type) = method_type {
                                 if arguments.len() != param_types.len() {
                                     return Err(format!(
                                         "Type Error at {}: Method '{}.{}' expected {} arguments, but got {}",
                                         loc, class_name, method_name, param_types.len(), arguments.len()
                                     ));
                                 }
-
 
                                 for (i, arg_node) in arguments.iter().enumerate() {
                                     let arg_type = Self::check(arg_node, env, None)?;
@@ -1312,22 +1437,35 @@ impl TypeChecker {
                                         && *expected_type != Type::Any
                                         && arg_type != Type::Any
                                     {
-
                                         let is_quantum_compat = matches!(
                                             (&arg_type, expected_type),
                                             (Type::QuantumRegister(_), Type::QuantumRegister(None))
                                         );
                                         let is_class_compat = match (&arg_type, expected_type) {
-                                            (Type::Instance(got), Type::Custom(expected)) => got == expected,
+                                            (Type::Instance(got), Type::Custom(expected)) => {
+                                                got == expected ||
+                                                got.ends_with(&format!(".{}", expected)) ||
+                                                expected.ends_with(&format!(".{}", got))
+                                            }
+                                            (Type::Custom(got), Type::Custom(expected)) => {
+                                                got == expected ||
+                                                got.ends_with(&format!(".{}", expected)) ||
+                                                expected.ends_with(&format!(".{}", got))
+                                            }
                                             _ => false,
                                         };
                                         let is_dict_compat = match (&arg_type, expected_type) {
-                                            (Type::Dict, Type::Custom(name)) if name == "Dict" => true,
-                                            (Type::Custom(name), Type::Dict) if name == "Dict" => true,
+                                            (Type::Dict, Type::Custom(name)) if name == "Dict" => {
+                                                true
+                                            }
+                                            (Type::Custom(name), Type::Dict) if name == "Dict" => {
+                                                true
+                                            }
                                             _ => false,
                                         };
 
-                                        if !is_quantum_compat && !is_class_compat && !is_dict_compat {
+                                        if !is_quantum_compat && !is_class_compat && !is_dict_compat
+                                        {
                                             return Err(format!(
                                                 "Type Error at {}: Argument {} of '{}.{}' is wrong type. Expected {:?}, got {:?}",
                                                 loc, (i + 1), class_name, method_name, expected_type, arg_type
@@ -1335,7 +1473,6 @@ impl TypeChecker {
                                         }
                                     }
                                 }
-
 
                                 Ok(*return_type)
                             } else {
@@ -1349,21 +1486,16 @@ impl TypeChecker {
                         }
                     }
 
-
-
                     Type::Module(module_types) => {
                         if let Some(member_type) = module_types.get(method_name) {
                             match member_type {
-
                                 Type::Function(param_types, return_type) => {
-
                                     if arguments.len() != param_types.len() {
                                         return Err(format!(
                                             "Type Error at {}: Module function '{}.{}' expected {} arguments, but got {}",
                                             loc, "module", method_name, param_types.len(), arguments.len()
                                         ));
                                     }
-
 
                                     for (i, arg_node) in arguments.iter().enumerate() {
                                         let arg_type = Self::check(arg_node, env, Option::None)?;
@@ -1373,23 +1505,53 @@ impl TypeChecker {
                                             && *expected_type != Type::Any
                                             && arg_type != Type::Any
                                         {
-
-                                            let is_quantum_compat = matches!((&arg_type, expected_type), (Type::QuantumRegister(_), Type::QuantumRegister(None)));
+                                            let is_quantum_compat = matches!(
+                                                (&arg_type, expected_type),
+                                                (
+                                                    Type::QuantumRegister(_),
+                                                    Type::QuantumRegister(None)
+                                                )
+                                            );
                                             let is_class_compat = match (&arg_type, expected_type) {
-                                                (Type::Instance(got), Type::Custom(expected)) => got == expected,
+                                                (Type::Instance(got), Type::Custom(expected)) => {
+                                                    got == expected ||
+                                                    got.ends_with(&format!(".{}", expected)) ||
+                                                    expected.ends_with(&format!(".{}", got))
+                                                }
+                                                (Type::Custom(got), Type::Custom(expected)) => {
+                                                    got == expected ||
+                                                    got.ends_with(&format!(".{}", expected)) ||
+                                                    expected.ends_with(&format!(".{}", got))
+                                                }
                                                 _ => false,
                                             };
                                             let is_dict_compat = match (&arg_type, expected_type) {
-                                                (Type::Dict, Type::Custom(name)) if name == "Dict" => true,
-                                                (Type::Custom(name), Type::Dict) if name == "Dict" => true,
+                                                (Type::Dict, Type::Custom(name))
+                                                    if name == "Dict" =>
+                                                {
+                                                    true
+                                                }
+                                                (Type::Custom(name), Type::Dict)
+                                                    if name == "Dict" =>
+                                                {
+                                                    true
+                                                }
                                                 _ => false,
                                             };
                                             let is_func_compat = match (&arg_type, expected_type) {
-                                                (Type::Function(..), Type::Custom(name)) if name == "Function" => true,
+                                                (Type::Function(..), Type::Custom(name))
+                                                    if name == "Function" =>
+                                                {
+                                                    true
+                                                }
                                                 _ => false,
                                             };
 
-                                            if !is_quantum_compat && !is_class_compat && !is_dict_compat && !is_func_compat {
+                                            if !is_quantum_compat
+                                                && !is_class_compat
+                                                && !is_dict_compat
+                                                && !is_func_compat
+                                            {
                                                 return Err(format!(
                                                     "Type Error at {}: Argument {} of '{}.{}' is wrong type. Expected {:?}, got {:?}",
                                                     loc, (i + 1), "module", method_name, expected_type, arg_type
@@ -1400,20 +1562,18 @@ impl TypeChecker {
                                     Ok(*return_type.clone())
                                 }
 
-
                                 Type::Class(class_name) => {
-
                                     let init_key = format!("{}::init", class_name);
-                                    let constructor_params = if let Some(ctor_type) = module_types.get(&init_key) {
-                                        if let Type::Function(params, _) = ctor_type {
-                                            params.clone()
+                                    let constructor_params =
+                                        if let Some(ctor_type) = module_types.get(&init_key) {
+                                            if let Type::Function(params, _) = ctor_type {
+                                                params.clone()
+                                            } else {
+                                                vec![]
+                                            }
                                         } else {
                                             vec![]
-                                        }
-                                    } else {
-                                        vec![]
-                                    };
-
+                                        };
 
                                     if arguments.len() != constructor_params.len() {
                                         return Err(format!(
@@ -1430,19 +1590,37 @@ impl TypeChecker {
                                             && *expected_type != Type::Any
                                             && arg_type != Type::Any
                                         {
-
-                                            let is_quantum_compat = matches!((&arg_type, expected_type), (Type::QuantumRegister(_), Type::QuantumRegister(None)));
+                                            let is_quantum_compat = matches!(
+                                                (&arg_type, expected_type),
+                                                (
+                                                    Type::QuantumRegister(_),
+                                                    Type::QuantumRegister(None)
+                                                )
+                                            );
                                             let is_class_compat = match (&arg_type, expected_type) {
-                                                (Type::Instance(got), Type::Custom(expected)) => got == expected,
+                                                (Type::Instance(got), Type::Custom(expected)) => {
+                                                    got == expected
+                                                }
                                                 _ => false,
                                             };
                                             let is_dict_compat = match (&arg_type, expected_type) {
-                                                 (Type::Dict, Type::Custom(name)) if name == "Dict" => true,
-                                                 (Type::Custom(name), Type::Dict) if name == "Dict" => true,
-                                                 _ => false,
+                                                (Type::Dict, Type::Custom(name))
+                                                    if name == "Dict" =>
+                                                {
+                                                    true
+                                                }
+                                                (Type::Custom(name), Type::Dict)
+                                                    if name == "Dict" =>
+                                                {
+                                                    true
+                                                }
+                                                _ => false,
                                             };
 
-                                            if !is_quantum_compat && !is_class_compat && !is_dict_compat {
+                                            if !is_quantum_compat
+                                                && !is_class_compat
+                                                && !is_dict_compat
+                                            {
                                                 return Err(format!(
                                                     "Type Error at {}: Argument {} of constructor is wrong type. Expected {:?}, got {:?}",
                                                     loc, (i + 1), expected_type, arg_type
@@ -1457,7 +1635,7 @@ impl TypeChecker {
                                 _ => Err(format!(
                                     "Type Error at {}: '{}.{}' is not a function or class.",
                                     loc, "module", method_name
-                                ))
+                                )),
                             }
                         } else {
                             Err(format!(
@@ -1474,11 +1652,10 @@ impl TypeChecker {
                 }
             }
 
-            ASTNode::SelfRef { loc } => {
-
-
-                Err(format!("Type Error at {}: 'self' can only be used inside class methods", loc))
-            }
+            ASTNode::SelfRef { loc } => Err(format!(
+                "Type Error at {}: 'self' can only be used inside class methods",
+                loc
+            )),
 
             ASTNode::FunctionCall {
                 callee,
@@ -1490,21 +1667,18 @@ impl TypeChecker {
 
                 let name = format!("{:?}", callee);
                 match callee_type {
-
                     Type::Class(class_name) => {
-
                         let init_key = format!("{}::init", class_name);
-                        let constructor_params = if let Some(ctor_info) = env.borrow().get(&init_key) {
-                            if let Type::Function(params, _) = ctor_info.var_type {
-                                params
+                        let constructor_params =
+                            if let Some(ctor_info) = env.borrow().get(&init_key) {
+                                if let Type::Function(params, _) = ctor_info.var_type {
+                                    params
+                                } else {
+                                    vec![]
+                                }
                             } else {
                                 vec![]
-                            }
-                        } else {
-
-                            vec![]
-                        };
-
+                            };
 
                         if arguments.len() != constructor_params.len() {
                             return Err(format!(
@@ -1512,7 +1686,6 @@ impl TypeChecker {
                                 loc, class_name, constructor_params.len(), arguments.len()
                             ));
                         }
-
 
                         for (i, arg_node) in arguments.iter().enumerate() {
                             let arg_type = Self::check(arg_node, env, Option::None)?;
@@ -1522,17 +1695,17 @@ impl TypeChecker {
                                 && *expected_type != Type::Any
                                 && arg_type != Type::Any
                             {
-
                                 let is_quantum_compat = matches!(
                                     (&arg_type, expected_type),
                                     (Type::QuantumRegister(_), Type::QuantumRegister(None))
                                 );
 
                                 let is_class_compat = match (&arg_type, expected_type) {
-                                    (Type::Instance(got), Type::Custom(expected)) => got == expected,
+                                    (Type::Instance(got), Type::Custom(expected)) => {
+                                        got == expected
+                                    }
                                     _ => false,
                                 };
-
 
                                 let is_dict_compat = match (&arg_type, expected_type) {
                                     (Type::Dict, Type::Custom(name)) if name == "Dict" => true,
@@ -1549,13 +1722,10 @@ impl TypeChecker {
                             }
                         }
 
-
                         Ok(Type::Instance(class_name))
                     }
 
                     Type::Custom(ref name) if name == "Function" => {
-
-
                         for arg in arguments {
                             Self::check(arg, env, Option::None)?;
                         }
@@ -1565,7 +1735,6 @@ impl TypeChecker {
 
                     Type::Function(param_types, return_type) => {
                         if arguments.len() > 0 && param_types.len() == 0 {
-
                         } else if arguments.len() != param_types.len() {
                             return Err(format!(
                                 "Type Error at {}: Function '{}' expected {} arguments, but got {}",
@@ -1584,25 +1753,28 @@ impl TypeChecker {
 
                             if arg_type != *expected_type
                                 && *expected_type != Type::Any
-                                && arg_type != Type::Any {
-
+                                && arg_type != Type::Any
+                            {
                                 let is_quantum_compat = matches!(
                                     (&arg_type, expected_type),
                                     (Type::QuantumRegister(_), Type::QuantumRegister(None))
                                 );
 
                                 let is_func_compat = match (&arg_type, expected_type) {
-
-                                    (Type::Function(..), Type::Custom(name)) if name == "Function" => true,
+                                    (Type::Function(..), Type::Custom(name))
+                                        if name == "Function" =>
+                                    {
+                                        true
+                                    }
                                     _ => false,
                                 };
 
                                 let is_class_compat = match (&arg_type, expected_type) {
-                                    (Type::Instance(got), Type::Custom(expected)) => got == expected,
+                                    (Type::Instance(got), Type::Custom(expected)) => {
+                                        got == expected
+                                    }
                                     _ => false,
                                 };
-
-
 
                                 if !is_quantum_compat && !is_class_compat {
                                     return Err(format!(
@@ -1610,7 +1782,6 @@ impl TypeChecker {
                                         loc, (i + 1), expected_type, arg_type
                                     ));
                                 }
-
                             }
                         }
                         Ok(*return_type)
@@ -1783,99 +1954,126 @@ impl TypeChecker {
                 let index_type = Self::check(index, env, Option::None)?;
 
                 match array_type {
-
-                Type::QuantumRegister(size_opt) => {
-                    if index_type != Type::Int {
-                        return Err(format!(
+                    Type::QuantumRegister(size_opt) => {
+                        if index_type != Type::Int {
+                            return Err(format!(
                             "Type Error at {}: Quantum register index must be an Int, but got {:?}",
                             loc, index_type
                         ));
-                    }
-                    if let (Some(size), ASTNode::IntLiteral(idx)) = (size_opt, &**index) {
-                        if *idx < 0 || *idx as usize >= size {
-                            return Err(format!(
+                        }
+                        if let (Some(size), ASTNode::IntLiteral(idx)) = (size_opt, &**index) {
+                            if *idx < 0 || *idx as usize >= size {
+                                return Err(format!(
                                 "Type Error at {}: Qubit index {} is out of bounds for register of size {}.",
                                 loc, idx, size
                             ));
+                            }
                         }
+                        Ok(Type::Qubit)
                     }
-                    Ok(Type::Qubit)
-                }
 
-
-                Type::Array(inner_type) => {
-                    if index_type != Type::Int {
-                        return Err(format!(
-                            "Type Error at {}: Array index must be an Int, but got {:?}",
-                            loc, index_type
-                        ));
+                    Type::Array(inner_type) => {
+                        if index_type != Type::Int {
+                            return Err(format!(
+                                "Type Error at {}: Array index must be an Int, but got {:?}",
+                                loc, index_type
+                            ));
+                        }
+                        Ok(*inner_type)
                     }
-                    Ok(*inner_type)
-                }
 
-
-                Type::String => {
-                    if index_type != Type::Int {
-                        return Err(format!(
-                            "Type Error at {}: String index must be an Int, but got {:?}",
-                            loc, index_type
-                        ));
+                    Type::String => {
+                        if index_type != Type::Int {
+                            return Err(format!(
+                                "Type Error at {}: String index must be an Int, but got {:?}",
+                                loc, index_type
+                            ));
+                        }
+                        Ok(Type::String)
                     }
-                    Ok(Type::String)
-                }
 
-
-                Type::Dict => {
-                    if index_type != Type::String && index_type != Type::Int && index_type != Type::Bool {
-                         return Err(format!(
+                    Type::Dict => {
+                        if index_type != Type::String
+                            && index_type != Type::Int
+                            && index_type != Type::Bool
+                        {
+                            return Err(format!(
                             "Type Error at {}: Dictionary key must be String, Int, or Bool, but got {:?}",
                             loc, index_type
                         ));
+                        }
+                        Ok(Type::Any)
                     }
-                    Ok(Type::Any)
-                }
 
-
-                Type::Custom(ref name) if name == "Dict" => {
-                    if index_type != Type::String && index_type != Type::Int && index_type != Type::Bool {
-                         return Err(format!(
+                    Type::Custom(ref name) if name == "Dict" => {
+                        if index_type != Type::String
+                            && index_type != Type::Int
+                            && index_type != Type::Bool
+                        {
+                            return Err(format!(
                             "Type Error at {}: Dictionary key must be String, Int, or Bool, but got {:?}",
                             loc, index_type
                         ));
+                        }
+                        Ok(Type::Any)
                     }
-                    Ok(Type::Any)
-                }
 
-                _ => Err(format!(
-                    "Type Error at {}: Cannot perform array access '[]' on type {:?}",
-                    loc, array_type
-                )),
-            }
+                    _ => Err(format!(
+                        "Type Error at {}: Cannot perform array access '[]' on type {:?}",
+                        loc, array_type
+                    )),
+                }
             }
 
             ASTNode::MemberAccess { object, member } => {
                 let object_type = Self::check(object, env, Option::None)?;
 
                 let class_name_opt = match &object_type {
-                    Type::Instance(name) | Type::Custom(name) => Some(name),
+                    Type::Instance(name) | Type::Custom(name) => Some(name.clone()),
                     _ => None,
                 };
 
-                if let Some(class_name) = class_name_opt {
+                if let Some(mut class_name) = class_name_opt {
+                    if class_name.contains('.') {
+                        if let Some(real_name) = class_name.split('.').last() {
+                            class_name = real_name.to_string();
+                        }
+                    }
 
                     let field_key = format!("{}::{}", class_name, member);
 
-
                     if let Some(field_info) = env.borrow().get(&field_key) {
                         return Ok(field_info.var_type.clone());
-                    } else {
-                        return Err(format!(
-                            "Type Error: Class '{}' has no member named '{}'",
-                            class_name, member
-                        ));
                     }
+
+                    let mut found_type = None;
+                    let mut current_env = Some(env.clone());
+
+                    while let Some(env_rc) = current_env {
+                        let env_ref = env_rc.borrow();
+                        for info in env_ref.store.values() {
+                            if let Type::Module(mod_types) = &info.var_type {
+                                if let Some(field_type) = mod_types.get(&field_key) {
+                                    found_type = Some(field_type.clone());
+                                    break;
+                                }
+                            }
+                        }
+                        if found_type.is_some() { break; }
+                        current_env = env_ref.outer.clone();
+                    }
+
+                    if let Some(t) = found_type {
+                        return Ok(t);
+                    }
+
+                    return Err(format!(
+                        "Type Error: Class '{}' has no member named '{}'",
+                        class_name, member
+                    ));
                 }
 
+                // Handle Module Access
                 if let Type::Module(module_types) = object_type {
                     match module_types.get(member) {
                         Some(t) => Ok(t.clone()),
@@ -1884,11 +2082,11 @@ impl TypeChecker {
                             member
                         )),
                     }
+                // Handle .length property
                 } else if member == "length" {
                     match object_type {
                         Type::Array(_) | Type::String | Type::Dict => Ok(Type::Int),
-                        Type::QuantumRegister(Some(_size)) => Ok(Type::Int),
-                        Type::QuantumRegister(None) => Ok(Type::Int),
+                        Type::QuantumRegister(_) => Ok(Type::Int),
                         _ => Err(format!(
                             "Type Error: Cannot get .length of type {:?}",
                             object_type
@@ -1912,13 +2110,10 @@ impl TypeChecker {
                 arguments,
                 loc,
             } => {
-
                 let gate_type = Self::check_gate_expression(gate_expr, env)?;
-
 
                 match gate_type {
                     Type::Function(param_types, return_type) => {
-
                         if arguments.len() != param_types.len() {
                             return Err(format!(
                                 "Type Error at {}: Gate requires {} arguments, but got {}",
@@ -1949,17 +2144,9 @@ impl TypeChecker {
                 }
             }
 
+            ASTNode::Gate { .. } => Self::check_gate_expression(node, env),
 
-            ASTNode::Gate { .. } => {
-
-                Self::check_gate_expression(node, env)
-            }
-
-
-            ASTNode::Controlled { gate_expr, loc } => {
-
-                Self::check_gate_expression(node, env)
-            }
+            ASTNode::Controlled { gate_expr, loc } => Self::check_gate_expression(node, env),
 
             ASTNode::Measure(target_expr) => {
                 let target_type = Self::check(target_expr, env, Option::None)?;
@@ -2000,7 +2187,6 @@ impl TypeChecker {
                 }
                 Ok(Type::None)
             }
-
 
             ASTNode::FunctionDeclaration {
                 name,
@@ -2056,38 +2242,17 @@ impl TypeChecker {
                 } else {
                     Type::None
                 };
+
                 match expected_return_type {
                     Option::None => Err(
                         "Type Error: 'return' statement found outside of a function.".to_string(),
                     ),
                     Some(expected) => {
-
-                        if value_type != *expected
-                            && *expected != Type::Any
-                            && value_type != Type::Any
-                        {
-
-                            let is_quantum_compat = matches!(
-                                (&value_type, expected),
-                                (Type::QuantumRegister(_), Type::QuantumRegister(None))
-                            );
-
-
-                            let is_class_compat = match (&value_type, expected) {
-                                (Type::Instance(got), Type::Custom(expected_name)) => got == expected_name,
-                                _ => false,
-                            };
-
-
-                            let is_dict_compat = match (&value_type, expected) {
-                                (Type::Dict, Type::Custom(name)) if name == "Dict" => true,
-                                (Type::Custom(name), Type::Dict) if name == "Dict" => true,
-                                _ => false,
-                            };
-
-                            if !is_quantum_compat && !is_class_compat && !is_dict_compat {
-                                return Err(format!("Type Error: Function expected return type {:?}, but found return with type {:?}", expected, value_type));
-                            }
+                        if !Self::is_type_compatible(&value_type, expected) {
+                            return Err(format!(
+                                "Type Error: Function expected return type {:?}, but found return with type {:?}",
+                                expected, value_type
+                            ));
                         }
                         Ok(Type::None)
                     }
@@ -2137,7 +2302,6 @@ impl TypeChecker {
                         end_type
                     ));
                 }
-
 
                 Ok(Type::Custom("range".to_string()))
             }
@@ -2222,6 +2386,61 @@ impl TypeChecker {
                 "Type checking is not implemented for this node: {:?}",
                 node
             )),
+        }
+    }
+
+    fn is_type_compatible(actual: &Type, expected: &Type) -> bool {
+        if actual == expected {
+            return true;
+        }
+
+        match (actual, expected) {
+            (Type::Any, _) | (_, Type::Any) => true,
+
+            (Type::None, _) => true,
+
+            (Type::QuantumRegister(_), Type::QuantumRegister(None)) => true,
+
+            (Type::Instance(actual_class), Type::Custom(expected_class)) => {
+                if actual_class == expected_class {
+                    return true;
+                }
+                if expected_class.contains('.') {
+                    if let Some(class_name) = expected_class.split('.').last() {
+                        return actual_class == class_name;
+                    }
+                }
+                false
+            }
+
+            (Type::Custom(actual_class), Type::Instance(expected_class)) => {
+                if actual_class == expected_class {
+                    return true;
+                }
+                if actual_class.contains('.') {
+                    if let Some(class_name) = actual_class.split('.').last() {
+                        return class_name == expected_class;
+                    }
+                }
+                false
+            }
+
+            (Type::Custom(actual_class), Type::Custom(expected_class)) => {
+                actual_class == expected_class ||
+                actual_class.ends_with(&format!(".{}", expected_class)) ||
+                expected_class.ends_with(&format!(".{}", actual_class))
+            }
+
+            (Type::Dict, Type::Custom(name)) | (Type::Custom(name), Type::Dict)
+                if name == "Dict" => true,
+
+            (Type::Array(t1), Type::Array(t2)) => {
+                **t1 == Type::Any || **t2 == Type::Any || Self::is_type_compatible(t1, t2)
+            }
+
+            (Type::Int, Type::Float) => true,
+
+            _ => false,
         }
     }
 }

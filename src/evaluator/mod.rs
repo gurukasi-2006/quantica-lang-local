@@ -3,31 +3,31 @@ use crate::environment::{Environment, GateDefinition, RuntimeValue};
 use crate::lexer::Lexer;
 use crate::parser::ast::ASTNode;
 use crate::parser::ast::BinaryOperator;
+use crate::parser::ast::ClassField;
+use crate::parser::ast::ClassMethod;
 use crate::parser::ast::ImportPath;
 use crate::parser::ast::ImportSpec;
 use crate::parser::ast::Loc;
 use crate::parser::Parser;
+use num_complex::Complex;
 use rand::Rng;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
-use crate::parser::ast::ClassField;
-use crate::parser::ast::ClassMethod;
-use num_complex::Complex;
 type C64 = Complex<f64>;
 use crate::graphics::{Canvas, Color, Plot, PlotType};
-use std::sync::Mutex;
 use std::io::Write;
+use std::sync::Mutex;
 type QubitMap = HashMap<String, usize>;
 lazy_static::lazy_static! {
     static ref INTERPRETER_CANVASES: Mutex<HashMap<i64, Canvas>> = Mutex::new(HashMap::new());
     static ref INTERPRETER_PLOTS: Mutex<HashMap<i64, Plot>> = Mutex::new(HashMap::new());
     static ref NEXT_ID: Mutex<i64> = Mutex::new(0);
 }
-use crate::qubit_lifecycle::{QubitLifecycleManager, QubitId, QubitOperation, QubitState};
 use crate::quantum_backend::native_simulator::NativeSimulator;
+use crate::qubit_lifecycle::{QubitId, QubitLifecycleManager, QubitOperation, QubitState};
 
 pub struct Evaluator;
 
@@ -168,40 +168,119 @@ impl Evaluator {
     pub fn register_builtins(env: &Rc<RefCell<Environment>>) {
         let mut e = env.borrow_mut();
 
+        e.set("time".to_string(), RuntimeValue::BuiltinFunction("time".to_string()));
 
-        e.set("print".to_string(), RuntimeValue::BuiltinFunction("print".to_string()));
-        e.set("len".to_string(), RuntimeValue::BuiltinFunction("len".to_string()));
-        e.set("to_string".to_string(), RuntimeValue::BuiltinFunction("to_string".to_string()));
-        e.set("to_int".to_string(), RuntimeValue::BuiltinFunction("to_int".to_string()));
-        e.set("to_float".to_string(), RuntimeValue::BuiltinFunction("to_float".to_string()));
-        e.set("type_of".to_string(), RuntimeValue::BuiltinFunction("type_of".to_string()));
-        e.set("assert".to_string(), RuntimeValue::BuiltinFunction("assert".to_string()));
-        e.set("echo".to_string(), RuntimeValue::BuiltinFunction("echo".to_string()));
-        e.set("maybe".to_string(), RuntimeValue::BuiltinFunction("maybe".to_string()));
-        e.set("sample".to_string(), RuntimeValue::BuiltinFunction("sample".to_string()));
-        e.set("debug_state".to_string(), RuntimeValue::BuiltinFunction("debug_state".to_string()));
-        e.set("measure".to_string(), RuntimeValue::BuiltinFunction("measure".to_string()));
+        e.set(
+            "print".to_string(),
+            RuntimeValue::BuiltinFunction("print".to_string()),
+        );
+        e.set(
+            "len".to_string(),
+            RuntimeValue::BuiltinFunction("len".to_string()),
+        );
+        e.set(
+            "to_string".to_string(),
+            RuntimeValue::BuiltinFunction("to_string".to_string()),
+        );
+        e.set(
+            "to_int".to_string(),
+            RuntimeValue::BuiltinFunction("to_int".to_string()),
+        );
+        e.set(
+            "to_float".to_string(),
+            RuntimeValue::BuiltinFunction("to_float".to_string()),
+        );
+        e.set(
+            "type_of".to_string(),
+            RuntimeValue::BuiltinFunction("type_of".to_string()),
+        );
+        e.set(
+            "assert".to_string(),
+            RuntimeValue::BuiltinFunction("assert".to_string()),
+        );
+        e.set(
+            "echo".to_string(),
+            RuntimeValue::BuiltinFunction("echo".to_string()),
+        );
+        e.set(
+            "maybe".to_string(),
+            RuntimeValue::BuiltinFunction("maybe".to_string()),
+        );
+        e.set(
+            "sample".to_string(),
+            RuntimeValue::BuiltinFunction("sample".to_string()),
+        );
+        e.set(
+            "debug_state".to_string(),
+            RuntimeValue::BuiltinFunction("debug_state".to_string()),
+        );
+        e.set(
+            "measure".to_string(),
+            RuntimeValue::BuiltinFunction("measure".to_string()),
+        );
 
+        e.set(
+            "_graphics_create_canvas".to_string(),
+            RuntimeValue::BuiltinFunction("_graphics_create_canvas".to_string()),
+        );
+        e.set(
+            "_graphics_set_background".to_string(),
+            RuntimeValue::BuiltinFunction("_graphics_set_background".to_string()),
+        );
+        e.set(
+            "_graphics_draw_rect".to_string(),
+            RuntimeValue::BuiltinFunction("_graphics_draw_rect".to_string()),
+        );
+        e.set(
+            "_graphics_draw_circle".to_string(),
+            RuntimeValue::BuiltinFunction("_graphics_draw_circle".to_string()),
+        );
+        e.set(
+            "_graphics_draw_line".to_string(),
+            RuntimeValue::BuiltinFunction("_graphics_draw_line".to_string()),
+        );
+        e.set(
+            "_graphics_draw_text".to_string(),
+            RuntimeValue::BuiltinFunction("_graphics_draw_text".to_string()),
+        );
+        e.set(
+            "_graphics_save_svg".to_string(),
+            RuntimeValue::BuiltinFunction("_graphics_save_svg".to_string()),
+        );
+        e.set(
+            "_graphics_destroy_canvas".to_string(),
+            RuntimeValue::BuiltinFunction("_graphics_destroy_canvas".to_string()),
+        );
 
-        e.set("_graphics_create_canvas".to_string(), RuntimeValue::BuiltinFunction("_graphics_create_canvas".to_string()));
-        e.set("_graphics_set_background".to_string(), RuntimeValue::BuiltinFunction("_graphics_set_background".to_string()));
-        e.set("_graphics_draw_rect".to_string(), RuntimeValue::BuiltinFunction("_graphics_draw_rect".to_string()));
-        e.set("_graphics_draw_circle".to_string(), RuntimeValue::BuiltinFunction("_graphics_draw_circle".to_string()));
-        e.set("_graphics_draw_line".to_string(), RuntimeValue::BuiltinFunction("_graphics_draw_line".to_string()));
-        e.set("_graphics_draw_text".to_string(), RuntimeValue::BuiltinFunction("_graphics_draw_text".to_string()));
-        e.set("_graphics_save_svg".to_string(), RuntimeValue::BuiltinFunction("_graphics_save_svg".to_string()));
-        e.set("_graphics_destroy_canvas".to_string(), RuntimeValue::BuiltinFunction("_graphics_destroy_canvas".to_string()));
+        e.set(
+            "_graphics_create_plot".to_string(),
+            RuntimeValue::BuiltinFunction("_graphics_create_plot".to_string()),
+        );
+        e.set(
+            "_graphics_plot_set_data".to_string(),
+            RuntimeValue::BuiltinFunction("_graphics_plot_set_data".to_string()),
+        );
+        e.set(
+            "_graphics_plot_set_title".to_string(),
+            RuntimeValue::BuiltinFunction("_graphics_plot_set_title".to_string()),
+        );
+        e.set(
+            "_graphics_plot_render".to_string(),
+            RuntimeValue::BuiltinFunction("_graphics_plot_render".to_string()),
+        );
+        e.set(
+            "_graphics_destroy_plot".to_string(),
+            RuntimeValue::BuiltinFunction("_graphics_destroy_plot".to_string()),
+        );
 
-
-        e.set("_graphics_create_plot".to_string(), RuntimeValue::BuiltinFunction("_graphics_create_plot".to_string()));
-        e.set("_graphics_plot_set_data".to_string(), RuntimeValue::BuiltinFunction("_graphics_plot_set_data".to_string()));
-        e.set("_graphics_plot_set_title".to_string(), RuntimeValue::BuiltinFunction("_graphics_plot_set_title".to_string()));
-        e.set("_graphics_plot_render".to_string(), RuntimeValue::BuiltinFunction("_graphics_plot_render".to_string()));
-        e.set("_graphics_destroy_plot".to_string(), RuntimeValue::BuiltinFunction("_graphics_destroy_plot".to_string()));
-
-        e.set("file_write".to_string(), RuntimeValue::BuiltinFunction("file_write".to_string()));
-        e.set("file_read".to_string(), RuntimeValue::BuiltinFunction("file_read".to_string()));
-
+        e.set(
+            "file_write".to_string(),
+            RuntimeValue::BuiltinFunction("file_write".to_string()),
+        );
+        e.set(
+            "file_read".to_string(),
+            RuntimeValue::BuiltinFunction("file_read".to_string()),
+        );
     }
     fn is_truthy(val: &RuntimeValue) -> bool {
         match val {
@@ -225,9 +304,7 @@ impl Evaluator {
         methods: &Vec<ClassMethod>,
         constructor: &Option<Box<ASTNode>>,
         env: &Rc<RefCell<Environment>>,
-
     ) -> Result<RuntimeValue, String> {
-
         let mut method_map = HashMap::new();
         for method in methods {
             method_map.insert(method.name.clone(), method.clone());
@@ -252,34 +329,56 @@ impl Evaluator {
         loc: &Loc,
         env: &Rc<RefCell<Environment>>,
     ) -> Result<RuntimeValue, String> {
-
         let parts: Vec<&str> = class_name.split('.').collect();
 
         let class_value_rc = if parts.len() > 1 {
             let module_name = parts[0];
             let target_class = parts[1];
 
-            let module_rc = env.borrow().get(module_name)
-                .ok_or_else(|| format!("Runtime Error at {}: Unknown module '{}'", loc, module_name))?;
+            let module_rc = env.borrow().get(module_name).ok_or_else(|| {
+                format!("Runtime Error at {}: Unknown module '{}'", loc, module_name)
+            })?;
 
             let module_val = module_rc.borrow();
             if let RuntimeValue::Module(mod_env) = &*module_val {
-                mod_env.borrow().get(target_class)
-                    .ok_or_else(|| format!("Runtime Error at {}: Module '{}' has no class '{}'", loc, module_name, target_class))?
+                mod_env.borrow().get(target_class).ok_or_else(|| {
+                    format!(
+                        "Runtime Error at {}: Module '{}' has no class '{}'",
+                        loc, module_name, target_class
+                    )
+                })?
             } else {
-                return Err(format!("Runtime Error at {}: '{}' is not a module.", loc, module_name));
+                return Err(format!(
+                    "Runtime Error at {}: '{}' is not a module.",
+                    loc, module_name
+                ));
             }
         } else {
-            env.borrow().get(class_name)
-                .ok_or_else(|| format!("Runtime Error at {}: Unknown class '{}'", loc, class_name))?
+            env.borrow().get(class_name).ok_or_else(|| {
+                format!("Runtime Error at {}: Unknown class '{}'", loc, class_name)
+            })?
         };
 
         let class_borrow = class_value_rc.borrow();
         let (fields_def, methods, constructor, def_env) = match &*class_borrow {
-            RuntimeValue::Class { fields, methods, constructor, definition_env, .. } => {
-                (fields.clone(), methods.clone(), constructor.clone(), definition_env.clone())
+            RuntimeValue::Class {
+                fields,
+                methods,
+                constructor,
+                definition_env,
+                ..
+            } => (
+                fields.clone(),
+                methods.clone(),
+                constructor.clone(),
+                definition_env.clone(),
+            ),
+            _ => {
+                return Err(format!(
+                    "Runtime Error at {}: '{}' is not a class",
+                    loc, class_name
+                ))
             }
-            _ => return Err(format!("Runtime Error at {}: '{}' is not a class", loc, class_name)),
         };
         drop(class_borrow);
 
@@ -305,7 +404,10 @@ impl Evaluator {
         };
 
         if let Some(constructor_node) = constructor {
-            if let ASTNode::FunctionDeclaration { parameters, body, .. } = &*constructor_node {
+            if let ASTNode::FunctionDeclaration {
+                parameters, body, ..
+            } = &*constructor_node
+            {
                 let mut evaluated_args = Vec::new();
                 for arg in arguments {
                     evaluated_args.push(Self::evaluate(arg, env)?);
@@ -318,18 +420,23 @@ impl Evaluator {
                 let parent_env = def_env.unwrap_or(env.clone());
                 let constructor_env = Rc::new(RefCell::new(Environment::new_enclosed(parent_env)));
 
-                constructor_env.borrow_mut().set("self".to_string(), instance.clone());
+                constructor_env
+                    .borrow_mut()
+                    .set("self".to_string(), instance.clone());
 
                 for (name, val_rc) in &initial_values {
-                    constructor_env.borrow_mut().define_rc(name.clone(), val_rc.clone());
+                    constructor_env
+                        .borrow_mut()
+                        .define_rc(name.clone(), val_rc.clone());
                 }
 
                 for (param, arg_value) in parameters.iter().zip(evaluated_args) {
-                    constructor_env.borrow_mut().set(param.name.clone(), arg_value);
+                    constructor_env
+                        .borrow_mut()
+                        .set(param.name.clone(), arg_value);
                 }
 
                 Self::evaluate(&body, &constructor_env)?;
-
             }
         }
 
@@ -354,11 +461,9 @@ impl Evaluator {
         loc: &Loc,
         env: &Rc<RefCell<Environment>>,
     ) -> Result<RuntimeValue, String> {
-
         let object = Self::evaluate(object_expr, env)?;
 
         match object {
-
             RuntimeValue::Instance {
                 class_name,
                 fields,
@@ -396,7 +501,9 @@ impl Evaluator {
                     methods: methods.clone(),
                     definition_env: None,
                 };
-                method_env.borrow_mut().set("self".to_string(), self_instance);
+                method_env
+                    .borrow_mut()
+                    .set("self".to_string(), self_instance);
 
                 for (field_name, field_value_rc) in &fields {
                     method_env
@@ -421,7 +528,6 @@ impl Evaluator {
                 }
             }
 
-
             RuntimeValue::Module(module_env) => {
                 let member_val = module_env.borrow().get(method_name).ok_or_else(|| {
                     format!(
@@ -429,7 +535,6 @@ impl Evaluator {
                         loc, method_name
                     )
                 })?;
-
 
                 let member_val = member_val.borrow().clone();
                 let evaluated_args = Self::eval_arguments(arguments, env)?;
@@ -567,10 +672,7 @@ impl Evaluator {
         }
     }
 
-    fn eval_self_ref(
-        loc: &Loc,
-        env: &Rc<RefCell<Environment>>,
-    ) -> Result<RuntimeValue, String> {
+    fn eval_self_ref(loc: &Loc, env: &Rc<RefCell<Environment>>) -> Result<RuntimeValue, String> {
         Err(format!(
             "Runtime Error at {}: 'self' can only be used inside class methods",
             loc
@@ -670,7 +772,6 @@ impl Evaluator {
         Ok(state)
     }
 
-
     fn complex_mul((a, b): (f64, f64), (c, d): (f64, f64)) -> (f64, f64) {
         (a * c - b * d, a * d + b * c)
     }
@@ -693,12 +794,10 @@ impl Evaluator {
         loc: &Loc,
         env: &Rc<RefCell<Environment>>,
     ) -> Result<RuntimeValue, String> {
-
         let mut qubit_args = Vec::new();
         for arg_node in arg_nodes {
             qubit_args.push(Self::evaluate(arg_node, env)?);
         }
-
 
         let gate_val = Self::eval_gate_expression(gate_expr_node, env)?;
 
@@ -716,7 +815,6 @@ impl Evaluator {
             }
         };
 
-
         let mut controls = Vec::new();
         let mut targets = Vec::new();
 
@@ -731,7 +829,9 @@ impl Evaluator {
 
         for (i, qubit_val) in qubit_args.iter().enumerate() {
             let (q_state_rc, q_index, q_size) = match qubit_val {
-                RuntimeValue::Qubit { state, index, size, .. } => (state.clone(), *index, *size),
+                RuntimeValue::Qubit {
+                    state, index, size, ..
+                } => (state.clone(), *index, *size),
                 _ => {
                     return Err(format!(
                     "Runtime Error at {}: Gate arguments must be Qubits, but argument {} was {}.",
@@ -758,10 +858,8 @@ impl Evaluator {
             }
         }
 
-
         let mut params = Vec::new();
         Self::extract_gate_params(gate_expr_node, &mut params, env)?;
-
 
         let gate_def = GateDefinition {
             name: base_name,
@@ -771,7 +869,6 @@ impl Evaluator {
             register_size: reg_size.unwrap_or(0),
             state_rc: state_rc.unwrap(),
         };
-
 
         Self::apply_multi_controlled_gate(gate_def, is_dagger)
     }
@@ -799,13 +896,11 @@ impl Evaluator {
                         base_name,
                         is_dagger,
                         num_controls,
-                    } => {
-                        Ok(RuntimeValue::Gate {
-                            base_name,
-                            is_dagger: !is_dagger,
-                            num_controls,
-                        })
-                    }
+                    } => Ok(RuntimeValue::Gate {
+                        base_name,
+                        is_dagger: !is_dagger,
+                        num_controls,
+                    }),
                     _ => Err("Internal Error: 'dagger' did not receive a valid gate.".to_string()),
                 }
             }
@@ -816,13 +911,11 @@ impl Evaluator {
                         base_name,
                         is_dagger,
                         num_controls,
-                    } => {
-                        Ok(RuntimeValue::Gate {
-                            base_name,
-                            is_dagger,
-                            num_controls: num_controls + 1,
-                        })
-                    }
+                    } => Ok(RuntimeValue::Gate {
+                        base_name,
+                        is_dagger,
+                        num_controls: num_controls + 1,
+                    }),
                     _ => {
                         Err("Internal Error: 'controlled' did not receive a valid gate."
                             .to_string())
@@ -838,19 +931,17 @@ impl Evaluator {
             ASTNode::Gate { name, .. } => Ok((name.to_lowercase(), false)),
             ASTNode::ParameterizedGate { name, .. } => Ok((name.to_lowercase(), false)),
 
-
             ASTNode::Dagger { gate_expr, .. } => {
                 let (name, is_dagger) = Self::extract_gate_info_runtime(gate_expr)?;
                 Ok((name, !is_dagger))
-            },
-
+            }
 
             ASTNode::Controlled { gate_expr, .. } => {
                 let (name, is_dagger) = Self::extract_gate_info_runtime(gate_expr)?;
                 Ok((format!("c{}", name), is_dagger))
-            },
+            }
 
-            _ => Err("Invalid gate expression".to_string())
+            _ => Err("Invalid gate expression".to_string()),
         }
     }
 
@@ -897,12 +988,10 @@ impl Evaluator {
                 loc,
                 ..
             } => {
-
                 let gate_name = match &**callee {
                     ASTNode::Identifier { name, .. } => name.to_lowercase(),
                     _ => return Err(format!("Runtime Error at {}: Gate expression must be a simple identifier inside the call.", loc)),
                 };
-
 
                 for arg_node in arguments.iter() {
                     let arg_val = Self::evaluate(arg_node, env)?;
@@ -974,17 +1063,13 @@ impl Evaluator {
 
         let mut processed = std::collections::HashSet::new();
 
-
         for (&basis_state, &amp_tuple) in old_state_map.iter() {
             if processed.contains(&basis_state) {
                 continue;
             }
 
-
             if (basis_state & control_mask) == control_mask {
-
                 let partner_state = basis_state ^ target_mask;
-
 
                 let amp_self_tuple = amp_tuple;
                 let amp_partner_tuple = old_state_map
@@ -997,35 +1082,27 @@ impl Evaluator {
 
                 let (amp0, amp1, idx0, idx1);
 
-
                 if (basis_state & target_mask) == 0 {
-
                     amp0 = amp_self;
                     amp1 = amp_partner;
                     idx0 = basis_state;
                     idx1 = partner_state;
                 } else {
-
                     amp0 = amp_partner;
                     amp1 = amp_self;
                     idx0 = partner_state;
                     idx1 = basis_state;
                 }
 
-
                 let new_amp0 = matrix[0][0] * amp0 + matrix[0][1] * amp1;
                 let new_amp1 = matrix[1][0] * amp0 + matrix[1][1] * amp1;
-
 
                 Self::insert_if_nonzero(&mut new_state_map, idx0, new_amp0);
                 Self::insert_if_nonzero(&mut new_state_map, idx1, new_amp1);
 
-
                 processed.insert(idx0);
                 processed.insert(idx1);
             } else {
-
-
                 new_state_map.insert(basis_state, amp_tuple);
                 processed.insert(basis_state);
             }
@@ -1064,9 +1141,7 @@ impl Evaluator {
                 let angle = if is_dagger { -phi } else { phi };
                 let phase_factor = C64::from_polar(1.0, angle);
 
-
                 for (&basis_state, amp_tuple) in state_map_guard.iter_mut() {
-
                     if (basis_state & control_mask) != 0 && (basis_state & target_mask) != 0 {
                         let amp = C64::new(amp_tuple.0, amp_tuple.1);
                         let new_amp = amp * phase_factor;
@@ -1081,11 +1156,9 @@ impl Evaluator {
                     let bit_b = (basis_state & target_mask) != 0;
 
                     if bit_a != bit_b {
-
                         let swapped_idx = basis_state ^ control_mask ^ target_mask;
                         new_state_map.insert(swapped_idx, amp_tuple);
                     } else {
-
                         new_state_map.insert(basis_state, amp_tuple);
                     }
                 }
@@ -1094,21 +1167,17 @@ impl Evaluator {
             "cnot" | "cx" => {
                 let mut new_state_map = HashMap::new();
                 for (&basis_state, &amp_tuple) in state_map_guard.iter() {
-
                     if (basis_state & control_mask) != 0 {
                         let swapped_idx = basis_state ^ target_mask;
                         new_state_map.insert(swapped_idx, amp_tuple);
                     } else {
-
                         new_state_map.insert(basis_state, amp_tuple);
                     }
                 }
                 *state_map_guard = new_state_map;
             }
             "cz" => {
-
                 for (&basis_state, amp_tuple) in state_map_guard.iter_mut() {
-
                     if (basis_state & control_mask) != 0 && (basis_state & target_mask) != 0 {
                         *amp_tuple = (-amp_tuple.0, -amp_tuple.1);
                     }
@@ -1125,7 +1194,6 @@ impl Evaluator {
         Ok(RuntimeValue::None)
     }
 
-
     fn get_gate_matrix(
         name: &str,
         params: &[f64],
@@ -1135,7 +1203,6 @@ impl Evaluator {
         let eff_dagger = if is_dagger { -1.0 } else { 1.0 };
 
         match name {
-
             "x" | "not" | "cnot" | "ccx" | "toffoli" => Ok([
                 [C64::new(0.0, 0.0), C64::new(1.0, 0.0)],
                 [C64::new(1.0, 0.0), C64::new(0.0, 0.0)],
@@ -1231,8 +1298,9 @@ impl Evaluator {
     ) -> Result<RuntimeValue, String> {
         let target_val = Self::evaluate(target_expr, env)?;
         let (state_rc, target_index, reg_size) = match target_val {
-
-            RuntimeValue::Qubit { state, index, size, .. } => (state, index, size),
+            RuntimeValue::Qubit {
+                state, index, size, ..
+            } => (state, index, size),
             _ => {
                 return Err(format!(
                     "Runtime Error: 'measure' can only be used on a single Qubit, got {}.",
@@ -1262,10 +1330,8 @@ impl Evaluator {
         let target_mask = 1 << target_index;
         let mut prob0 = 0.0;
 
-
         for (&basis_state, &amp_tuple) in old_state_map.iter() {
             if (basis_state & target_mask) == 0 {
-
                 prob0 += amp_tuple.0.powi(2) + amp_tuple.1.powi(2);
             }
         }
@@ -1291,28 +1357,20 @@ impl Evaluator {
 
         let mut new_state_map = HashMap::new();
 
-
         for (&basis_state, &amp_tuple) in old_state_map.iter() {
             let bit_at_index = (basis_state >> target_index) & 1;
-
 
             if bit_at_index as i64 == measured_result {
                 let (real, imag) = amp_tuple;
                 let normalized_amp = Self::complex_scalar_mul((real, imag), norm_factor);
                 new_state_map.insert(basis_state, normalized_amp);
             }
-
         }
-
 
         *state_map_guard = new_state_map;
 
         Ok(RuntimeValue::Int(measured_result))
     }
-
-
-
-
 
     fn eval_array_access(
         collection_expr: &Box<ASTNode>,
@@ -1345,7 +1403,12 @@ impl Evaluator {
                     ))
             }
 
-            RuntimeValue::QuantumRegister { size, state, register_name, global_start_index } => {
+            RuntimeValue::QuantumRegister {
+                size,
+                state,
+                register_name,
+                global_start_index,
+            } => {
                 let index = match index_val {
                     RuntimeValue::Int(i) => i,
                     _ => return Err(format!("Runtime Error at {}: Index must be int.", loc)),
@@ -1353,7 +1416,6 @@ impl Evaluator {
                 if index < 0 || index as usize >= size {
                     return Err(format!("Runtime Error at {}: Index out of bounds.", loc));
                 }
-
 
                 let global_index = global_start_index.map(|start| start + (index as usize));
 
@@ -1388,22 +1450,20 @@ impl Evaluator {
     ) -> Result<RuntimeValue, String> {
         let object = Self::evaluate(object_expr, env)?;
         match object {
-
-            RuntimeValue::Module(module_env) => {
-                match module_env.borrow().get(member) {
-                    Some(value_rc) => Ok(value_rc.borrow().clone()),
-                    None => Err(format!(
-                        "Runtime Error: Module does not have a member named '{}'",
-                        member
-                    )),
-                }
-            }
-            RuntimeValue::Instance { fields, .. } => {
-                match fields.get(member) {
-                    Some(value_rc) => Ok(value_rc.borrow().clone()),
-                    None => Err(format!("Runtime Error: Instance has no field named '{}'", member))
-                }
-            }
+            RuntimeValue::Module(module_env) => match module_env.borrow().get(member) {
+                Some(value_rc) => Ok(value_rc.borrow().clone()),
+                None => Err(format!(
+                    "Runtime Error: Module does not have a member named '{}'",
+                    member
+                )),
+            },
+            RuntimeValue::Instance { fields, .. } => match fields.get(member) {
+                Some(value_rc) => Ok(value_rc.borrow().clone()),
+                None => Err(format!(
+                    "Runtime Error: Instance has no field named '{}'",
+                    member
+                )),
+            },
 
             RuntimeValue::QuantumRegister { size, .. } => match member {
                 "length" => Ok(RuntimeValue::Int(size as i64)),
@@ -1589,6 +1649,7 @@ impl Evaluator {
 
                 match func_name.as_str() {
                     "print" => Self::builtin_print(evaluated_args),
+                    "time" => Self::builtin_time(evaluated_args),
                     "input" => Self::builtin_input(evaluated_args),
                     "split" => Self::builtin_split(evaluated_args),
                     "echo" => Self::builtin_echo(evaluated_args),
@@ -1601,16 +1662,24 @@ impl Evaluator {
                     "len" => Self::builtin_len(evaluated_args),
                     "debug_state" => Self::builtin_debug_state(evaluated_args),
                     "assert" => Self::builtin_assert(evaluated_args),
-                    "_graphics_create_canvas" => Self::builtin_graphics_create_canvas(evaluated_args),
-                    "_graphics_set_background" => Self::builtin_graphics_set_background(evaluated_args),
+                    "_graphics_create_canvas" => {
+                        Self::builtin_graphics_create_canvas(evaluated_args)
+                    }
+                    "_graphics_set_background" => {
+                        Self::builtin_graphics_set_background(evaluated_args)
+                    }
                     "_graphics_draw_rect" => Self::builtin_graphics_draw_rect(evaluated_args),
                     "_graphics_draw_circle" => Self::builtin_graphics_draw_circle(evaluated_args),
                     "_graphics_draw_line" => Self::builtin_graphics_draw_line(evaluated_args),
                     "_graphics_save_svg" => Self::builtin_graphics_save_svg(evaluated_args),
                     "_graphics_destroy_canvas" => Ok(RuntimeValue::None),
                     "_graphics_create_plot" => Self::builtin_graphics_create_plot(evaluated_args),
-                    "_graphics_plot_set_data" => Self::builtin_graphics_plot_set_data(evaluated_args),
-                    "_graphics_plot_set_title" => Self::builtin_graphics_plot_set_title(evaluated_args),
+                    "_graphics_plot_set_data" => {
+                        Self::builtin_graphics_plot_set_data(evaluated_args)
+                    }
+                    "_graphics_plot_set_title" => {
+                        Self::builtin_graphics_plot_set_title(evaluated_args)
+                    }
                     "_graphics_plot_render" => Self::builtin_graphics_plot_render(evaluated_args),
                     "_graphics_destroy_plot" => Self::builtin_graphics_destroy_plot(evaluated_args),
 
@@ -1666,78 +1735,82 @@ impl Evaluator {
                 }
             }
 
-            RuntimeValue::Class { name, fields, methods, constructor, .. } => {
+            RuntimeValue::Class {
+                name,
+                fields,
+                methods,
+                constructor,
+                ..
+            } => {
+                let mut instance_fields = HashMap::new();
+                let mut initial_values = HashMap::new();
+                for field in &fields {
+                    let value = if let Some(default_expr) = &field.default_value {
+                        Self::evaluate(default_expr, env)?
+                    } else {
+                        RuntimeValue::None
+                    };
+                    initial_values.insert(field.name.clone(), value.clone());
+                    instance_fields.insert(field.name.clone(), Rc::new(RefCell::new(value)));
+                }
 
-                        let mut instance_fields = HashMap::new();
-                        let mut initial_values = HashMap::new();
-                        for field in &fields {
-                            let value = if let Some(default_expr) = &field.default_value {
-                                Self::evaluate(default_expr, env)?
-                            } else {
-                                RuntimeValue::None
-                            };
-                            initial_values.insert(field.name.clone(), value.clone());
-                            instance_fields.insert(field.name.clone(), Rc::new(RefCell::new(value)));
+                let mut instance = RuntimeValue::Instance {
+                    class_name: name.clone(),
+                    fields: instance_fields.clone(),
+                    methods: methods.clone(),
+                    definition_env: None,
+                };
+
+                if let Some(constructor_node) = constructor {
+                    if let ASTNode::FunctionDeclaration {
+                        parameters, body, ..
+                    } = &*constructor_node
+                    {
+                        if parameters.len() != evaluated_args.len() {
+                            return Err(format!("Runtime Error: Constructor arg mismatch."));
                         }
 
+                        let constructor_env =
+                            Rc::new(RefCell::new(Environment::new_enclosed(env.clone())));
 
-                        let mut instance = RuntimeValue::Instance {
-                            class_name: name.clone(),
-                            fields: instance_fields.clone(),
-                            methods: methods.clone(),
-                            definition_env: None,
-                        };
+                        constructor_env
+                            .borrow_mut()
+                            .set("self".to_string(), instance.clone());
 
+                        for (name, val) in &initial_values {
+                            constructor_env.borrow_mut().set(name.clone(), val.clone());
+                        }
 
-                        if let Some(constructor_node) = constructor {
-                            if let ASTNode::FunctionDeclaration { parameters, body, .. } = &*constructor_node {
-                                if parameters.len() != evaluated_args.len() {
-                                    return Err(format!("Runtime Error: Constructor arg mismatch."));
-                                }
+                        for (param, arg_value) in parameters.iter().zip(evaluated_args) {
+                            constructor_env
+                                .borrow_mut()
+                                .set(param.name.clone(), arg_value);
+                        }
 
-                                let constructor_env = Rc::new(RefCell::new(Environment::new_enclosed(env.clone())));
+                        Self::evaluate(&body, &constructor_env)?;
 
+                        for (field_name, field_rc) in &instance_fields {
+                            if let Some(local_val_rc) = constructor_env.borrow().get(field_name) {
+                                let local_val = local_val_rc.borrow().clone();
 
-                                constructor_env.borrow_mut().set("self".to_string(), instance.clone());
-
-
-                                for (name, val) in &initial_values {
-                                    constructor_env.borrow_mut().set(name.clone(), val.clone());
-                                }
-
-
-                                for (param, arg_value) in parameters.iter().zip(evaluated_args) {
-                                    constructor_env.borrow_mut().set(param.name.clone(), arg_value);
-                                }
-
-
-                                Self::evaluate(&body, &constructor_env)?;
-
-
-                                for (field_name, field_rc) in &instance_fields {
-                                    if let Some(local_val_rc) = constructor_env.borrow().get(field_name) {
-                                        let local_val = local_val_rc.borrow().clone();
-
-                                        if let Some(initial_val) = initial_values.get(field_name) {
-
-                                            if !Self::are_values_equal(&local_val, initial_val) {
-                                                *field_rc.borrow_mut() = local_val;
-                                            }
-                                        }
+                                if let Some(initial_val) = initial_values.get(field_name) {
+                                    if !Self::are_values_equal(&local_val, initial_val) {
+                                        *field_rc.borrow_mut() = local_val;
                                     }
                                 }
-
-
-                                instance = RuntimeValue::Instance {
-                                    class_name: name.clone(),
-                                    fields: instance_fields,
-                                    methods,
-                                    definition_env: None,
-                                };
                             }
                         }
-                        Ok(instance)
+
+                        instance = RuntimeValue::Instance {
+                            class_name: name.clone(),
+                            fields: instance_fields,
+                            methods,
+                            definition_env: None,
+                        };
                     }
+                }
+                Ok(instance)
+            }
             _ => Err(format!(
                 "Runtime Error at {}: '{}' is not a callable function.",
                 loc, name
@@ -1795,7 +1868,6 @@ impl Evaluator {
                     loc,
                 } => {
                     let daggered_gate_expr = match &**gate_expr {
-
                         ASTNode::Gate { name, loc, .. } => ASTNode::Dagger {
                             gate_expr: Box::new(ASTNode::Gate {
                                 name: name.clone(),
@@ -1885,7 +1957,6 @@ impl Evaluator {
         Ok(last_result)
     }
 
-
     pub fn print_quantum_state(
         state: &Rc<RefCell<HashMap<usize, (f64, f64)>>>,
         size: usize,
@@ -1913,6 +1984,18 @@ impl Evaluator {
         }
         println!("-----------------------------------");
     }
+
+    fn builtin_time(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
+        if !args.is_empty() {
+            return Err("Runtime Error: 'time' expects 0 arguments.".to_string());
+        }
+        let start = std::time::SystemTime::now();
+        let since_the_epoch = start
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| format!("Time Error: {}", e))?;
+        Ok(RuntimeValue::Float(since_the_epoch.as_secs_f64()))
+    }
+
     fn builtin_debug_state(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
         if args.len() != 1 {
             return Err(
@@ -1921,8 +2004,7 @@ impl Evaluator {
             );
         }
         match &args[0] {
-            RuntimeValue::QuantumRegister { size, state ,..} => {
-
+            RuntimeValue::QuantumRegister { size, state, .. } => {
                 Self::print_quantum_state(state, *size, 10);
                 Ok(RuntimeValue::None)
             }
@@ -1935,17 +2017,19 @@ impl Evaluator {
 
     fn builtin_file_write(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
         if args.len() != 2 {
-            return Err("Runtime Error: 'file_write' expects 2 arguments (path, content).".to_string());
+            return Err(
+                "Runtime Error: 'file_write' expects 2 arguments (path, content).".to_string(),
+            );
         }
 
         let path = match &args[0] {
             RuntimeValue::String(s) => s,
-            _ => return Err("Runtime Error: File path must be a String.".to_string())
+            _ => return Err("Runtime Error: File path must be a String.".to_string()),
         };
 
         let content = match &args[1] {
             RuntimeValue::String(s) => s,
-            _ => return Err("Runtime Error: File content must be a String.".to_string())
+            _ => return Err("Runtime Error: File content must be a String.".to_string()),
         };
 
         std::fs::write(path, content).map_err(|e| format!("File Write Error: {}", e))?;
@@ -1959,10 +2043,11 @@ impl Evaluator {
 
         let path = match &args[0] {
             RuntimeValue::String(s) => s,
-            _ => return Err("Runtime Error: File path must be a String.".to_string())
+            _ => return Err("Runtime Error: File path must be a String.".to_string()),
         };
 
-        let content = std::fs::read_to_string(path).map_err(|e| format!("File Read Error: {}", e))?;
+        let content =
+            std::fs::read_to_string(path).map_err(|e| format!("File Read Error: {}", e))?;
         Ok(RuntimeValue::String(content))
     }
 
@@ -1972,8 +2057,10 @@ impl Evaluator {
         }
 
         let (state_rc, target_index, reg_size) = match &args[0] {
-            RuntimeValue::Qubit { state, index, size, .. } => (state, *index, *size),
-            _ => return Err(format!("Runtime Error: Not a qubit."))
+            RuntimeValue::Qubit {
+                state, index, size, ..
+            } => (state, *index, *size),
+            _ => return Err(format!("Runtime Error: Not a qubit.")),
         };
         Self::perform_measurement(state_rc, target_index, reg_size)
     }
@@ -2006,25 +2093,21 @@ impl Evaluator {
         };
 
         if condition {
-
             Ok(RuntimeValue::None)
         } else {
-
             Err(format!("Assertion Failed: {}", message))
         }
     }
     fn builtin_print(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
         let output: Vec<String> = args
             .into_iter()
-            .map(|val| {
-                match val {
-                    RuntimeValue::String(s) => s,
-                    RuntimeValue::Int(n) => n.to_string(),
-                    RuntimeValue::Float(f) => f.to_string(),
-                    RuntimeValue::Bool(b) => b.to_string(),
-                    RuntimeValue::None => "None".to_string(),
-                    _ => format!("{}", val),
-                }
+            .map(|val| match val {
+                RuntimeValue::String(s) => s,
+                RuntimeValue::Int(n) => n.to_string(),
+                RuntimeValue::Float(f) => f.to_string(),
+                RuntimeValue::Bool(b) => b.to_string(),
+                RuntimeValue::None => "None".to_string(),
+                _ => format!("{}", val),
             })
             .collect();
         println!("{}", output.join(" "));
@@ -2032,19 +2115,20 @@ impl Evaluator {
     }
     fn builtin_split(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
         if args.len() != 2 {
-            return Err("Runtime Error: 'split' expects 2 arguments (string, delimiter).".to_string());
+            return Err(
+                "Runtime Error: 'split' expects 2 arguments (string, delimiter).".to_string(),
+            );
         }
 
         let target_str = match &args[0] {
             RuntimeValue::String(s) => s,
-            _ => return Err("Runtime Error: First argument to split must be a String.".to_string())
+            _ => return Err("Runtime Error: First argument to split must be a String.".to_string()),
         };
 
         let delim = match &args[1] {
             RuntimeValue::String(s) => s,
-            _ => return Err("Runtime Error: Delimiter must be a String.".to_string())
+            _ => return Err("Runtime Error: Delimiter must be a String.".to_string()),
         };
-
 
         let elements: Vec<std::rc::Rc<std::cell::RefCell<RuntimeValue>>> = target_str
             .split(delim)
@@ -2057,18 +2141,15 @@ impl Evaluator {
         Ok(RuntimeValue::Register(elements))
     }
     fn builtin_input(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
-
         if let Some(val) = args.get(0) {
             print!("{}", val);
             let _ = std::io::stdout().flush();
         }
 
-
         let mut input_buffer = String::new();
         std::io::stdin()
             .read_line(&mut input_buffer)
             .map_err(|e| format!("Runtime Error: Failed to read input. {}", e))?;
-
 
         Ok(RuntimeValue::String(input_buffer.trim().to_string()))
     }
@@ -2187,7 +2268,6 @@ impl Evaluator {
         }
     }
 
-
     fn eval_let_declaration(
         name: &str,
         value_expr: &ASTNode,
@@ -2206,7 +2286,6 @@ impl Evaluator {
         let new_value = Self::evaluate(value_expr, env)?;
 
         match target {
-
             ASTNode::Identifier { name, .. } => {
                 if let Some(var_rc) = env.borrow().get(name) {
                     *std::cell::RefCell::<_>::borrow_mut(&var_rc) = new_value;
@@ -2218,7 +2297,6 @@ impl Evaluator {
                     ))
                 }
             }
-
 
             ASTNode::ArrayAccess { array, index, loc } => {
                 let collection_val = Self::evaluate(array, env)?;
@@ -2257,23 +2335,24 @@ impl Evaluator {
             }
 
             ASTNode::MemberAccess { object, member } => {
-
                 let object_val = Self::evaluate(object, env)?;
 
                 match object_val {
                     RuntimeValue::Instance { fields, .. } => {
                         if let Some(field_rc) = fields.get(member) {
-
                             *field_rc.borrow_mut() = new_value;
                             Ok(RuntimeValue::None)
                         } else {
-
-                            Err(format!("Runtime Error: Instance has no field named '{}'.", member))
+                            Err(format!(
+                                "Runtime Error: Instance has no field named '{}'.",
+                                member
+                            ))
                         }
                     }
                     _ => Err(format!(
                         "Runtime Error: Cannot assign to member '{}' of non-instance type {}.",
-                        member, object_val.type_name()
+                        member,
+                        object_val.type_name()
                     )),
                 }
             }
@@ -2305,14 +2384,11 @@ impl Evaluator {
         alias: &str,
         env: &Rc<RefCell<Environment>>,
     ) -> Result<RuntimeValue, String> {
-
         let file_path = match path {
             ImportPath::File(f) => {
                 if f.ends_with(".qc") || f.contains('/') || f.contains('\\') {
-
                     f.clone()
                 } else {
-
                     format!("q_packages/{}/init.qc", f)
                 }
             }
@@ -2335,14 +2411,11 @@ impl Evaluator {
             .parse()
             .map_err(|e| format!("Module Parser Error: {}", e))?;
 
-
         let module_env = Rc::new(RefCell::new(Environment::new()));
         Self::register_builtins(&module_env);
         Self::evaluate_program(&ast, &module_env)?;
 
-
         let module_val = RuntimeValue::Module(module_env);
-
 
         env.borrow_mut().set(alias.to_string(), module_val);
 
@@ -2518,14 +2591,14 @@ impl Evaluator {
                 (
                     RuntimeValue::QuantumRegister {
                         size: size_a,
-                        state: state_a_rc,..
+                        state: state_a_rc,
+                        ..
                     },
                     RuntimeValue::QuantumRegister {
                         size: size_b,
-                        state: state_b_rc,..
+                        state: state_b_rc,
+                        ..
                     },
-
-
                 ) => {
                     let state_a = state_a_rc.borrow();
                     let state_b = state_b_rc.borrow();
@@ -2533,13 +2606,10 @@ impl Evaluator {
 
                     let mut new_state = HashMap::new();
 
-
-
                     for (&i, &amp_a) in state_a.iter() {
                         for (&j, &amp_b) in state_b.iter() {
                             let new_index = (i << size_b) | j;
                             let new_amp_tuple = Self::complex_mul(amp_a, amp_b);
-
 
                             new_state.insert(new_index, new_amp_tuple);
                         }
@@ -2551,12 +2621,11 @@ impl Evaluator {
                         register_name: "tensor_result".to_string(),
                         global_start_index: None,
                     });
-
                 }
 
                 (RuntimeValue::Register(vec_a), RuntimeValue::Register(vec_b)) => {
                     if vec_a.len() != vec_b.len() {
-                         return Err("Dimension mismatch for dot product".to_string());
+                        return Err("Dimension mismatch for dot product".to_string());
                     }
 
                     let mut sum = 0.0;
@@ -2564,12 +2633,12 @@ impl Evaluator {
                         let a = match *a_rc.borrow() {
                             RuntimeValue::Float(f) => f,
                             RuntimeValue::Int(i) => i as f64,
-                            _ => return Err("Tensor product requires numbers".to_string())
+                            _ => return Err("Tensor product requires numbers".to_string()),
                         };
                         let b = match *b_rc.borrow() {
                             RuntimeValue::Float(f) => f,
                             RuntimeValue::Int(i) => i as f64,
-                            _ => return Err("Tensor product requires numbers".to_string())
+                            _ => return Err("Tensor product requires numbers".to_string()),
                         };
                         sum += a * b;
                     }
@@ -2766,8 +2835,14 @@ impl Evaluator {
         }
     }
     fn builtin_graphics_create_canvas(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
-        let width = match args.get(0) { Some(RuntimeValue::Int(i)) => *i as u32, _ => return Err("Width must be Int".to_string()) };
-        let height = match args.get(1) { Some(RuntimeValue::Int(i)) => *i as u32, _ => return Err("Height must be Int".to_string()) };
+        let width = match args.get(0) {
+            Some(RuntimeValue::Int(i)) => *i as u32,
+            _ => return Err("Width must be Int".to_string()),
+        };
+        let height = match args.get(1) {
+            Some(RuntimeValue::Int(i)) => *i as u32,
+            _ => return Err("Height must be Int".to_string()),
+        };
 
         let mut id_guard = NEXT_ID.lock().unwrap();
         let id = *id_guard;
@@ -2780,11 +2855,26 @@ impl Evaluator {
     }
 
     fn builtin_graphics_set_background(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
-        let id = match args.get(0) { Some(RuntimeValue::Int(i)) => *i, _ => return Err("ID error".to_string()) };
-        let r = match args.get(1) { Some(RuntimeValue::Int(i)) => *i as u8, _ => 0 };
-        let g = match args.get(2) { Some(RuntimeValue::Int(i)) => *i as u8, _ => 0 };
-        let b = match args.get(3) { Some(RuntimeValue::Int(i)) => *i as u8, _ => 0 };
-        let a = match args.get(4) { Some(RuntimeValue::Int(i)) => *i as u8, _ => 255 };
+        let id = match args.get(0) {
+            Some(RuntimeValue::Int(i)) => *i,
+            _ => return Err("ID error".to_string()),
+        };
+        let r = match args.get(1) {
+            Some(RuntimeValue::Int(i)) => *i as u8,
+            _ => 0,
+        };
+        let g = match args.get(2) {
+            Some(RuntimeValue::Int(i)) => *i as u8,
+            _ => 0,
+        };
+        let b = match args.get(3) {
+            Some(RuntimeValue::Int(i)) => *i as u8,
+            _ => 0,
+        };
+        let a = match args.get(4) {
+            Some(RuntimeValue::Int(i)) => *i as u8,
+            _ => 255,
+        };
 
         let mut canvases = INTERPRETER_CANVASES.lock().unwrap();
         if let Some(canvas) = canvases.get_mut(&id) {
@@ -2794,10 +2884,20 @@ impl Evaluator {
     }
 
     fn builtin_graphics_draw_rect(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
-        let id = match args.get(0) { Some(RuntimeValue::Int(i)) => *i, _ => return Err("ID error".to_string()) };
+        let id = match args.get(0) {
+            Some(RuntimeValue::Int(i)) => *i,
+            _ => return Err("ID error".to_string()),
+        };
 
-        let to_f = |v: Option<&RuntimeValue>| match v { Some(RuntimeValue::Float(f)) => *f, Some(RuntimeValue::Int(i)) => *i as f64, _ => 0.0 };
-        let to_u8 = |v: Option<&RuntimeValue>| match v { Some(RuntimeValue::Int(i)) => *i as u8, _ => 0 };
+        let to_f = |v: Option<&RuntimeValue>| match v {
+            Some(RuntimeValue::Float(f)) => *f,
+            Some(RuntimeValue::Int(i)) => *i as f64,
+            _ => 0.0,
+        };
+        let to_u8 = |v: Option<&RuntimeValue>| match v {
+            Some(RuntimeValue::Int(i)) => *i as u8,
+            _ => 0,
+        };
 
         let x = to_f(args.get(1));
         let y = to_f(args.get(2));
@@ -2807,7 +2907,10 @@ impl Evaluator {
         let g = to_u8(args.get(6));
         let b = to_u8(args.get(7));
         let a = to_u8(args.get(8));
-        let filled = match args.get(9) { Some(RuntimeValue::Int(i)) => *i != 0, _ => false };
+        let filled = match args.get(9) {
+            Some(RuntimeValue::Int(i)) => *i != 0,
+            _ => false,
+        };
 
         let mut canvases = INTERPRETER_CANVASES.lock().unwrap();
         if let Some(canvas) = canvases.get_mut(&id) {
@@ -2817,10 +2920,20 @@ impl Evaluator {
     }
 
     fn builtin_graphics_draw_circle(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
-        let id = match args.get(0) { Some(RuntimeValue::Int(i)) => *i, _ => return Err("ID error".to_string()) };
+        let id = match args.get(0) {
+            Some(RuntimeValue::Int(i)) => *i,
+            _ => return Err("ID error".to_string()),
+        };
 
-        let to_f = |v: Option<&RuntimeValue>| match v { Some(RuntimeValue::Float(f)) => *f, Some(RuntimeValue::Int(i)) => *i as f64, _ => 0.0 };
-        let to_u8 = |v: Option<&RuntimeValue>| match v { Some(RuntimeValue::Int(i)) => *i as u8, _ => 0 };
+        let to_f = |v: Option<&RuntimeValue>| match v {
+            Some(RuntimeValue::Float(f)) => *f,
+            Some(RuntimeValue::Int(i)) => *i as f64,
+            _ => 0.0,
+        };
+        let to_u8 = |v: Option<&RuntimeValue>| match v {
+            Some(RuntimeValue::Int(i)) => *i as u8,
+            _ => 0,
+        };
 
         let x = to_f(args.get(1));
         let y = to_f(args.get(2));
@@ -2829,7 +2942,10 @@ impl Evaluator {
         let g = to_u8(args.get(5));
         let b = to_u8(args.get(6));
         let a = to_u8(args.get(7));
-        let filled = match args.get(8) { Some(RuntimeValue::Int(i)) => *i != 0, _ => false };
+        let filled = match args.get(8) {
+            Some(RuntimeValue::Int(i)) => *i != 0,
+            _ => false,
+        };
 
         let mut canvases = INTERPRETER_CANVASES.lock().unwrap();
         if let Some(canvas) = canvases.get_mut(&id) {
@@ -2839,10 +2955,20 @@ impl Evaluator {
     }
 
     fn builtin_graphics_draw_line(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
-        let id = match args.get(0) { Some(RuntimeValue::Int(i)) => *i, _ => return Err("ID error".to_string()) };
+        let id = match args.get(0) {
+            Some(RuntimeValue::Int(i)) => *i,
+            _ => return Err("ID error".to_string()),
+        };
 
-        let to_f = |v: Option<&RuntimeValue>| match v { Some(RuntimeValue::Float(f)) => *f, Some(RuntimeValue::Int(i)) => *i as f64, _ => 0.0 };
-        let to_u8 = |v: Option<&RuntimeValue>| match v { Some(RuntimeValue::Int(i)) => *i as u8, _ => 0 };
+        let to_f = |v: Option<&RuntimeValue>| match v {
+            Some(RuntimeValue::Float(f)) => *f,
+            Some(RuntimeValue::Int(i)) => *i as f64,
+            _ => 0.0,
+        };
+        let to_u8 = |v: Option<&RuntimeValue>| match v {
+            Some(RuntimeValue::Int(i)) => *i as u8,
+            _ => 0,
+        };
 
         let x1 = to_f(args.get(1));
         let y1 = to_f(args.get(2));
@@ -2862,14 +2988,27 @@ impl Evaluator {
     }
 
     fn builtin_graphics_draw_text(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
-        let id = match args.get(0) { Some(RuntimeValue::Int(i)) => *i, _ => return Err("ID error".to_string()) };
+        let id = match args.get(0) {
+            Some(RuntimeValue::Int(i)) => *i,
+            _ => return Err("ID error".to_string()),
+        };
 
-        let to_f = |v: Option<&RuntimeValue>| match v { Some(RuntimeValue::Float(f)) => *f, Some(RuntimeValue::Int(i)) => *i as f64, _ => 0.0 };
-        let to_u8 = |v: Option<&RuntimeValue>| match v { Some(RuntimeValue::Int(i)) => *i as u8, _ => 0 };
+        let to_f = |v: Option<&RuntimeValue>| match v {
+            Some(RuntimeValue::Float(f)) => *f,
+            Some(RuntimeValue::Int(i)) => *i as f64,
+            _ => 0.0,
+        };
+        let to_u8 = |v: Option<&RuntimeValue>| match v {
+            Some(RuntimeValue::Int(i)) => *i as u8,
+            _ => 0,
+        };
 
         let x = to_f(args.get(1));
         let y = to_f(args.get(2));
-        let text = match args.get(3) { Some(RuntimeValue::String(s)) => s.clone(), _ => "".to_string() };
+        let text = match args.get(3) {
+            Some(RuntimeValue::String(s)) => s.clone(),
+            _ => "".to_string(),
+        };
         let r = to_u8(args.get(4));
         let g = to_u8(args.get(5));
         let b = to_u8(args.get(6));
@@ -2884,8 +3023,14 @@ impl Evaluator {
     }
 
     fn builtin_graphics_save_svg(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
-        let id = match args.get(0) { Some(RuntimeValue::Int(i)) => *i, _ => return Err("ID error".to_string()) };
-        let filename = match args.get(1) { Some(RuntimeValue::String(s)) => s.clone(), _ => return Err("Filename error".to_string()) };
+        let id = match args.get(0) {
+            Some(RuntimeValue::Int(i)) => *i,
+            _ => return Err("ID error".to_string()),
+        };
+        let filename = match args.get(1) {
+            Some(RuntimeValue::String(s)) => s.clone(),
+            _ => return Err("Filename error".to_string()),
+        };
 
         let canvases = INTERPRETER_CANVASES.lock().unwrap();
         if let Some(canvas) = canvases.get(&id) {
@@ -2899,35 +3044,42 @@ impl Evaluator {
     }
 
     fn builtin_graphics_destroy_canvas(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
-        let id = match args.get(0) { Some(RuntimeValue::Int(i)) => *i, _ => return Err("ID error".to_string()) };
+        let id = match args.get(0) {
+            Some(RuntimeValue::Int(i)) => *i,
+            _ => return Err("ID error".to_string()),
+        };
         INTERPRETER_CANVASES.lock().unwrap().remove(&id);
         Ok(RuntimeValue::None)
     }
 
-
-
     fn builtin_graphics_create_plot(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
-         let ptype_int = match args.get(0) { Some(RuntimeValue::Int(i)) => *i, _ => 0 };
-         let ptype = match ptype_int {
-             0 => PlotType::Line,
-             1 => PlotType::Scatter,
-             2 => PlotType::Bar,
-             3 => PlotType::Histogram,
-             4 => PlotType::Heatmap,
-             _ => PlotType::Line,
-         };
+        let ptype_int = match args.get(0) {
+            Some(RuntimeValue::Int(i)) => *i,
+            _ => 0,
+        };
+        let ptype = match ptype_int {
+            0 => PlotType::Line,
+            1 => PlotType::Scatter,
+            2 => PlotType::Bar,
+            3 => PlotType::Histogram,
+            4 => PlotType::Heatmap,
+            _ => PlotType::Line,
+        };
 
-         let mut id_guard = NEXT_ID.lock().unwrap();
-         let id = *id_guard;
-         *id_guard += 1;
+        let mut id_guard = NEXT_ID.lock().unwrap();
+        let id = *id_guard;
+        *id_guard += 1;
 
-         let plot = Plot::new(ptype);
-         INTERPRETER_PLOTS.lock().unwrap().insert(id, plot);
-         Ok(RuntimeValue::Int(id))
+        let plot = Plot::new(ptype);
+        INTERPRETER_PLOTS.lock().unwrap().insert(id, plot);
+        Ok(RuntimeValue::Int(id))
     }
 
     fn builtin_graphics_plot_set_data(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
-        let id = match args.get(0) { Some(RuntimeValue::Int(i)) => *i, _ => return Err("ID error".to_string()) };
+        let id = match args.get(0) {
+            Some(RuntimeValue::Int(i)) => *i,
+            _ => return Err("ID error".to_string()),
+        };
 
         let extract_vec = |val: Option<&RuntimeValue>| -> Vec<f64> {
             match val {
@@ -2935,12 +3087,15 @@ impl Evaluator {
                     let mut res = Vec::new();
                     for item in arr_rc.iter() {
                         let inner = item.borrow();
-                        if let RuntimeValue::Float(f) = *inner { res.push(f); }
-                        else if let RuntimeValue::Int(i) = *inner { res.push(i as f64); }
+                        if let RuntimeValue::Float(f) = *inner {
+                            res.push(f);
+                        } else if let RuntimeValue::Int(i) = *inner {
+                            res.push(i as f64);
+                        }
                     }
                     res
                 }
-                _ => Vec::new()
+                _ => Vec::new(),
             }
         };
 
@@ -2955,8 +3110,14 @@ impl Evaluator {
     }
 
     fn builtin_graphics_plot_set_title(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
-        let id = match args.get(0) { Some(RuntimeValue::Int(i)) => *i, _ => return Err("ID error".to_string()) };
-        let title = match args.get(1) { Some(RuntimeValue::String(s)) => s.clone(), _ => "".to_string() };
+        let id = match args.get(0) {
+            Some(RuntimeValue::Int(i)) => *i,
+            _ => return Err("ID error".to_string()),
+        };
+        let title = match args.get(1) {
+            Some(RuntimeValue::String(s)) => s.clone(),
+            _ => "".to_string(),
+        };
 
         let mut plots = INTERPRETER_PLOTS.lock().unwrap();
         if let Some(plot) = plots.get_mut(&id) {
@@ -2966,8 +3127,14 @@ impl Evaluator {
     }
 
     fn builtin_graphics_plot_render(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
-        let plot_id = match args.get(0) { Some(RuntimeValue::Int(i)) => *i, _ => return Err("ID error".to_string()) };
-        let canvas_id = match args.get(1) { Some(RuntimeValue::Int(i)) => *i, _ => return Err("ID error".to_string()) };
+        let plot_id = match args.get(0) {
+            Some(RuntimeValue::Int(i)) => *i,
+            _ => return Err("ID error".to_string()),
+        };
+        let canvas_id = match args.get(1) {
+            Some(RuntimeValue::Int(i)) => *i,
+            _ => return Err("ID error".to_string()),
+        };
 
         let plots = INTERPRETER_PLOTS.lock().unwrap();
         let mut canvases = INTERPRETER_CANVASES.lock().unwrap();
@@ -2983,7 +3150,10 @@ impl Evaluator {
     }
 
     fn builtin_graphics_destroy_plot(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
-        let id = match args.get(0) { Some(RuntimeValue::Int(i)) => *i, _ => return Err("ID error".to_string()) };
+        let id = match args.get(0) {
+            Some(RuntimeValue::Int(i)) => *i,
+            _ => return Err("ID error".to_string()),
+        };
         INTERPRETER_PLOTS.lock().unwrap().remove(&id);
         Ok(RuntimeValue::None)
     }
@@ -2997,9 +3167,19 @@ impl Evaluator {
         let mut qubit_map: QubitMap = HashMap::new();
         let mut next_alloc = 0;
 
-        Self::eval_recursive(node, env, lifecycle, simulator, &mut qubit_map, &mut next_alloc)
+        Self::eval_recursive(
+            node,
+            env,
+            lifecycle,
+            simulator,
+            &mut qubit_map,
+            &mut next_alloc,
+        )
     }
-    fn resolve_qubits(args: &[ASTNode], env: &Rc<RefCell<Environment>>) -> Result<Vec<usize>, String> {
+    fn resolve_qubits(
+        args: &[ASTNode],
+        env: &Rc<RefCell<Environment>>,
+    ) -> Result<Vec<usize>, String> {
         let mut indices = Vec::new();
         for arg in args {
             let val = Self::evaluate(arg, env)?;
@@ -3007,7 +3187,10 @@ impl Evaluator {
                 if let Some(idx) = global_index {
                     indices.push(idx);
                 } else {
-                    return Err("Runtime Error: Qubit has no hardware index (Simulator not active?).".to_string());
+                    return Err(
+                        "Runtime Error: Qubit has no hardware index (Simulator not active?)."
+                            .to_string(),
+                    );
                 }
             } else {
                 return Err("Runtime Error: Argument is not a Qubit.".to_string());
@@ -3028,8 +3211,13 @@ impl Evaluator {
             ASTNode::Program(statements) | ASTNode::Block(statements) => {
                 let mut last = RuntimeValue::None;
                 for stmt in statements {
-                    last = Self::eval_recursive(stmt, env, lifecycle, simulator, qubit_map, next_alloc)?;
-                    if let RuntimeValue::ReturnValue(_) | RuntimeValue::Break | RuntimeValue::Continue = last {
+                    last = Self::eval_recursive(
+                        stmt, env, lifecycle, simulator, qubit_map, next_alloc,
+                    )?;
+                    if let RuntimeValue::ReturnValue(_)
+                    | RuntimeValue::Break
+                    | RuntimeValue::Continue = last
+                    {
                         return Ok(last);
                     }
                 }
@@ -3042,13 +3230,13 @@ impl Evaluator {
                         RuntimeValue::Int(n) => n as usize,
                         _ => 1,
                     }
-                } else { 1 };
-
+                } else {
+                    1
+                };
 
                 qubit_map.insert(name.clone(), *next_alloc);
 
                 lifecycle.register_qubits(name, count, QubitState::Classical(false));
-
 
                 let dummy_state = Self::default_state_vector(count)?;
                 let register = RuntimeValue::QuantumRegister {
@@ -3063,29 +3251,39 @@ impl Evaluator {
                 Ok(RuntimeValue::None)
             }
 
-            ASTNode::Apply { gate_expr, arguments, loc } => {
+            ASTNode::Apply {
+                gate_expr,
+                arguments,
+                loc,
+            } => {
                 let qubit_ids = Self::extract_qubit_ids_runtime(arguments, env)?;
                 let (gate_name, is_dagger) = Self::extract_gate_info_runtime(gate_expr)?;
 
                 if Self::is_controlled_gate(gate_expr) {
-                     let num_controls = Self::count_controls(gate_expr);
-                     let (controls, targets) = qubit_ids.split_at(num_controls);
-                     lifecycle.record_controlled_gate(controls, targets, &gate_name, *loc)
+                    let num_controls = Self::count_controls(gate_expr);
+                    let (controls, targets) = qubit_ids.split_at(num_controls);
+                    lifecycle
+                        .record_controlled_gate(controls, targets, &gate_name, *loc)
                         .map_err(|e| e.to_string())?;
                 } else {
                     for qubit_id in &qubit_ids {
-                        lifecycle.record_operation(qubit_id, QubitOperation::ApplyGate(gate_name.clone()), *loc)
+                        lifecycle
+                            .record_operation(
+                                qubit_id,
+                                QubitOperation::ApplyGate(gate_name.clone()),
+                                *loc,
+                            )
                             .map_err(|e| e.to_string())?;
                     }
                 }
-
 
                 let target_indices = Self::resolve_qubits(arguments, env)?;
 
                 let mut params = Vec::new();
                 Self::extract_gate_params(gate_expr, &mut params, env)?;
 
-                simulator.apply_gate(&gate_name, &target_indices, &params, is_dagger)
+                simulator
+                    .apply_gate(&gate_name, &target_indices, &params, is_dagger)
                     .map_err(|e| format!("Simulator Error: {}", e))?;
 
                 Ok(RuntimeValue::None)
@@ -3095,13 +3293,15 @@ impl Evaluator {
                 let qubit_ids = Self::extract_qubit_ids_runtime(&[*qubit_expr.clone()], env)?;
                 let loc = Self::get_node_location(qubit_expr);
                 for qubit_id in &qubit_ids {
-                    lifecycle.record_operation(qubit_id, QubitOperation::Measure, loc)
+                    lifecycle
+                        .record_operation(qubit_id, QubitOperation::Measure, loc)
                         .map_err(|e| e.to_string())?;
                 }
 
-
                 let indices = Self::resolve_qubits(&[*qubit_expr.clone()], env)?;
-                if indices.is_empty() { return Err("Runtime Error: Measure target invalid.".to_string()); }
+                if indices.is_empty() {
+                    return Err("Runtime Error: Measure target invalid.".to_string());
+                }
 
                 let result = simulator.measure_single(indices[0]);
                 Ok(RuntimeValue::Int(result as i64))
@@ -3110,35 +3310,54 @@ impl Evaluator {
             ASTNode::Block(statements) => {
                 let mut last = RuntimeValue::None;
                 for stmt in statements {
-                    last = Self::eval_recursive(stmt, env, lifecycle, simulator, qubit_map, next_alloc)?;
+                    last = Self::eval_recursive(
+                        stmt, env, lifecycle, simulator, qubit_map, next_alloc,
+                    )?;
                     match last {
-                        RuntimeValue::ReturnValue(_) | RuntimeValue::Break | RuntimeValue::Continue => return Ok(last),
+                        RuntimeValue::ReturnValue(_)
+                        | RuntimeValue::Break
+                        | RuntimeValue::Continue => return Ok(last),
                         _ => {}
                     }
                 }
                 Ok(last)
             }
 
-            ASTNode::If { condition, then_block, elif_blocks, else_block } => {
+            ASTNode::If {
+                condition,
+                then_block,
+                elif_blocks,
+                else_block,
+            } => {
                 let cond_val = Self::evaluate(condition, env)?;
                 if Self::is_truthy(&cond_val) {
-                    return Self::eval_recursive(then_block, env, lifecycle, simulator, qubit_map, next_alloc);
+                    return Self::eval_recursive(
+                        then_block, env, lifecycle, simulator, qubit_map, next_alloc,
+                    );
                 }
                 for (cond, body) in elif_blocks {
                     if Self::is_truthy(&Self::evaluate(cond, env)?) {
-                        return Self::eval_recursive(body, env, lifecycle, simulator, qubit_map, next_alloc);
+                        return Self::eval_recursive(
+                            body, env, lifecycle, simulator, qubit_map, next_alloc,
+                        );
                     }
                 }
                 if let Some(else_body) = else_block {
-                    return Self::eval_recursive(else_body, env, lifecycle, simulator, qubit_map, next_alloc);
+                    return Self::eval_recursive(
+                        else_body, env, lifecycle, simulator, qubit_map, next_alloc,
+                    );
                 }
                 Ok(RuntimeValue::None)
             }
 
             ASTNode::While { condition, body } => {
                 loop {
-                    if !Self::is_truthy(&Self::evaluate(condition, env)?) { break; }
-                    let res = Self::eval_recursive(body, env, lifecycle, simulator, qubit_map, next_alloc)?;
+                    if !Self::is_truthy(&Self::evaluate(condition, env)?) {
+                        break;
+                    }
+                    let res = Self::eval_recursive(
+                        body, env, lifecycle, simulator, qubit_map, next_alloc,
+                    )?;
                     match res {
                         RuntimeValue::Break => break,
                         RuntimeValue::Continue => continue,
@@ -3149,7 +3368,11 @@ impl Evaluator {
                 Ok(RuntimeValue::None)
             }
 
-            ASTNode::For { variable, iterator, body } => {
+            ASTNode::For {
+                variable,
+                iterator,
+                body,
+            } => {
                 let iter_val = Self::evaluate(iterator, env)?;
                 let iterable: Vec<RuntimeValue> = match iter_val {
                     RuntimeValue::Range(r) => r.into_iter().map(RuntimeValue::Int).collect(),
@@ -3158,7 +3381,9 @@ impl Evaluator {
                 };
                 for item in iterable {
                     env.borrow_mut().set(variable.clone(), item);
-                    let res = Self::eval_recursive(body, env, lifecycle, simulator, qubit_map, next_alloc)?;
+                    let res = Self::eval_recursive(
+                        body, env, lifecycle, simulator, qubit_map, next_alloc,
+                    )?;
                     match res {
                         RuntimeValue::Break => break,
                         RuntimeValue::Continue => continue,
@@ -3170,33 +3395,39 @@ impl Evaluator {
             }
 
             ASTNode::LetDeclaration { name, value, .. } => {
-                let val = Self::eval_recursive(value, env, lifecycle, simulator, qubit_map, next_alloc)?;
+                let val =
+                    Self::eval_recursive(value, env, lifecycle, simulator, qubit_map, next_alloc)?;
                 env.borrow_mut().set(name.clone(), val);
                 Ok(RuntimeValue::None)
             }
 
             ASTNode::Assignment { target, value } => {
-                let new_value = Self::eval_recursive(value, env, lifecycle, simulator, qubit_map, next_alloc)?;
+                let new_value =
+                    Self::eval_recursive(value, env, lifecycle, simulator, qubit_map, next_alloc)?;
                 match &**target {
                     ASTNode::Identifier { name, .. } => {
-                         if let Some(var_rc) = env.borrow().get(name) {
+                        if let Some(var_rc) = env.borrow().get(name) {
                             *var_rc.borrow_mut() = new_value;
                             Ok(RuntimeValue::None)
                         } else {
                             Err(format!("Runtime Error: Undefined variable '{}'.", name))
                         }
                     }
-                    _ => Self::eval_assignment(target, value, env)
+                    _ => Self::eval_assignment(target, value, env),
                 }
             }
 
-            ASTNode::FunctionCall { callee, arguments, loc, is_dagger } => {
-                Self::eval_function_call_with_lifecycle_recursive(
-                    callee, arguments, loc, env, *is_dagger, lifecycle, simulator, qubit_map, next_alloc
-                )
-            }
+            ASTNode::FunctionCall {
+                callee,
+                arguments,
+                loc,
+                is_dagger,
+            } => Self::eval_function_call_with_lifecycle_recursive(
+                callee, arguments, loc, env, *is_dagger, lifecycle, simulator, qubit_map,
+                next_alloc,
+            ),
 
-            _ => Self::evaluate(node, env)
+            _ => Self::evaluate(node, env),
         }
     }
 
@@ -3211,7 +3442,6 @@ impl Evaluator {
         qubit_map: &mut QubitMap,
         next_alloc: &mut usize,
     ) -> Result<RuntimeValue, String> {
-
         if let ASTNode::Identifier { name, .. } = callee_expr {
             if name == "debug_state" {
                 if let Some(arg) = arguments.get(0) {
@@ -3220,25 +3450,26 @@ impl Evaluator {
                     match arg {
                         ASTNode::Identifier { name: var_name, .. } => {
                             if let Some(&start) = qubit_map.get(var_name) {
-
                                 if let Some(val) = env.borrow().get(var_name) {
-                                    if let RuntimeValue::QuantumRegister { size, .. } = &*val.borrow() {
+                                    if let RuntimeValue::QuantumRegister { size, .. } =
+                                        &*val.borrow()
+                                    {
                                         for i in 0..*size {
                                             indices.push(start + i);
                                         }
                                     }
                                 }
                             }
-                        },
+                        }
                         ASTNode::ArrayAccess { array, index, .. } => {
-                             if let ASTNode::Identifier { name: var_name, .. } = &**array {
-                                 if let ASTNode::IntLiteral(idx) = &**index {
-                                     if let Some(&start) = qubit_map.get(var_name) {
-                                         indices.push(start + (*idx as usize));
-                                     }
-                                 }
-                             }
-                        },
+                            if let ASTNode::Identifier { name: var_name, .. } = &**array {
+                                if let ASTNode::IntLiteral(idx) = &**index {
+                                    if let Some(&start) = qubit_map.get(var_name) {
+                                        indices.push(start + (*idx as usize));
+                                    }
+                                }
+                            }
+                        }
                         _ => {}
                     }
 
@@ -3254,7 +3485,11 @@ impl Evaluator {
         let function = Self::evaluate(callee_expr, env)?;
 
         match function {
-            RuntimeValue::Function { parameters, body, env: func_env } => {
+            RuntimeValue::Function {
+                parameters,
+                body,
+                env: func_env,
+            } => {
                 let mut function_scope = Environment::new_enclosed(func_env);
                 if parameters.len() != evaluated_args.len() {
                     return Err(format!("Runtime Error: Arg count mismatch at {}", loc));
@@ -3264,7 +3499,14 @@ impl Evaluator {
                 }
                 let function_scope_rc = Rc::new(RefCell::new(function_scope));
 
-                let result = Self::eval_recursive(&body, &function_scope_rc, lifecycle, simulator, qubit_map, next_alloc)?;
+                let result = Self::eval_recursive(
+                    &body,
+                    &function_scope_rc,
+                    lifecycle,
+                    simulator,
+                    qubit_map,
+                    next_alloc,
+                )?;
 
                 if let RuntimeValue::ReturnValue(val) = result {
                     Ok(*val)
@@ -3272,10 +3514,9 @@ impl Evaluator {
                     Ok(result)
                 }
             }
-            _ => Self::eval_function_call(callee_expr, arguments, loc, env, is_dagger)
+            _ => Self::eval_function_call(callee_expr, arguments, loc, env, is_dagger),
         }
     }
-
 
     fn extract_qubit_ids_runtime(
         arguments: &[ASTNode],
@@ -3285,9 +3526,12 @@ impl Evaluator {
         for arg in arguments {
             let val = Self::evaluate(arg, env)?;
 
-
-            if let RuntimeValue::Qubit { index, register_name, .. } = val {
-
+            if let RuntimeValue::Qubit {
+                index,
+                register_name,
+                ..
+            } = val
+            {
                 ids.push(QubitId::new(register_name, index));
             }
         }
@@ -3300,26 +3544,26 @@ impl Evaluator {
             ASTNode::ParameterizedGate { name, .. } => Ok(name.to_lowercase()),
             ASTNode::Controlled { gate_expr, .. } => Self::extract_gate_name_runtime(gate_expr),
             ASTNode::Dagger { gate_expr, .. } => Self::extract_gate_name_runtime(gate_expr),
-            _ => Err("Invalid gate expression".to_string())
+            _ => Err("Invalid gate expression".to_string()),
         }
     }
     fn is_controlled_gate(gate_expr: &ASTNode) -> bool {
         match gate_expr {
             ASTNode::Controlled { .. } => true,
-            ASTNode::Dagger { gate_expr: inner, .. } => Self::is_controlled_gate(inner),
-            _ => false
+            ASTNode::Dagger {
+                gate_expr: inner, ..
+            } => Self::is_controlled_gate(inner),
+            _ => false,
         }
     }
-
 
     fn count_controls(gate_expr: &ASTNode) -> usize {
         match gate_expr {
             ASTNode::Controlled { gate_expr, .. } => 1 + Self::count_controls(gate_expr),
             ASTNode::Dagger { gate_expr, .. } => Self::count_controls(gate_expr),
-            _ => 0
+            _ => 0,
         }
     }
-
 
     fn get_node_location(node: &ASTNode) -> Loc {
         match node {
@@ -3327,7 +3571,7 @@ impl Evaluator {
             ASTNode::Identifier { loc, .. } => *loc,
             ASTNode::Apply { loc, .. } => *loc,
             ASTNode::Measure(inner) => Self::get_node_location(inner),
-            _ => Loc { line: 0, column: 0 }
+            _ => Loc { line: 0, column: 0 },
         }
     }
 }

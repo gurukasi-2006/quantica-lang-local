@@ -2,34 +2,37 @@
 mod codegen;
 mod doc_generator;
 mod environment;
+mod error;
+mod error_bridge;
+mod error_codes;
 mod evaluator;
 mod lexer;
 mod linker;
 mod parser;
+mod qubit_lifecycle;
 mod runtime;
 mod type_checker;
-mod error;
-mod error_codes;
-mod error_bridge;
-mod qubit_lifecycle;
 
-mod hardware_integration;
-mod quantum_backend;
 mod graphics;
 mod graphics_runtime;
+mod hardware_integration;
+mod quantum_backend;
+use crate::quantum_backend::native_simulator::NativeSimulator;
+use crate::qubit_lifecycle::QubitLifecycleManager;
 use hardware_integration::{parse_hardware_config, HardwareExecutor};
 use quantum_backend::QuantumConfig;
-use crate::qubit_lifecycle::QubitLifecycleManager;
-use crate::quantum_backend::native_simulator::NativeSimulator;
 
 use crate::codegen::Compiler;
 use crate::doc_generator::DocGenerator;
 use crate::environment::Environment;
 use crate::environment::RuntimeValue;
+use crate::error::{Diagnostic, ErrorCategory, ErrorReporter};
+use crate::error_bridge::report_string_error;
 use crate::evaluator::Evaluator;
 use crate::lexer::token::Token;
 use crate::linker::Linker;
 use crate::parser::ast::ASTNode;
+use crate::parser::ast::Loc;
 use crate::type_checker::TypeChecker;
 use crate::type_checker::TypeEnvironment;
 use inkwell::context::Context;
@@ -43,9 +46,6 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 use std::time::Instant;
-use crate::error_bridge::report_string_error;
-use crate::error::{ErrorReporter, Diagnostic,ErrorCategory};
-use crate::parser::ast::Loc;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum CompilationTarget {
@@ -86,16 +86,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("⚠️ Qubit lifecycle checking disabled");
     }
 
-
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
             "--hardware" => {
-
                 i += 2;
             }
             "--device" | "--shots" | "--api-token" => {
-
                 i += 2;
             }
             "--no-optimize" => {
@@ -152,7 +149,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 i += 1;
             }
             _ => {
-
                 i += 1;
             }
         }
@@ -181,7 +177,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(file) = filename {
             println!("🚀 Executing on Quantum Hardware: {:?}\n", config.provider);
             println!("📄 File: {}", file);
-            println!("🎯 Device: {}", config.device_name.as_ref().unwrap_or(&"default".to_string()));
+            println!(
+                "🎯 Device: {}",
+                config
+                    .device_name
+                    .as_ref()
+                    .unwrap_or(&"default".to_string())
+            );
             println!("🎲 Shots: {}\n", config.shots);
             return run_on_hardware(&file, config);
         } else {
@@ -265,14 +267,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         println!("🚀 Compiling to executable: {} -> {}", fname, output_exe);
 
-        match compile_file_llvm(
-            fname,
-            object_file,
-            emit_llvm,
-            opt_level,
-            enable_lto,
-            target,
-        ) {
+        match compile_file_llvm(fname, object_file, emit_llvm, opt_level, enable_lto, target) {
             Ok(()) => {
                 println!("✓ LLVM compilation successful!\n");
 
@@ -349,7 +344,6 @@ fn compile_file(filename: &str, show_ast: bool, show_tokens: bool, verbose: bool
         println!("{:-<60}\n", "");
     }
 
-
     let _reporter = ErrorReporter::new(&source, filename);
 
     // Lexical Analysis
@@ -394,7 +388,7 @@ fn compile_file(filename: &str, show_ast: bool, show_tokens: bool, verbose: bool
     }
 
     match TypeChecker::check_program(&ast) {
-        Ok(()) => {},
+        Ok(()) => {}
         Err(e) => {
             report_string_error(e, &source, filename);
             std::process::exit(1);
@@ -413,12 +407,13 @@ fn compile_file(filename: &str, show_ast: bool, show_tokens: bool, verbose: bool
     }
 
     let env = std::rc::Rc::new(std::cell::RefCell::new(Environment::new()));
+    Evaluator::register_builtins(&env);
     let mut lifecycle = QubitLifecycleManager::new(true); // strict mode enabled
 
-
     let total_qubits = count_total_qubits(&ast);
-    if verbose { println!("   -> Allocated Quantum Memory: {} qubits", total_qubits); }
-
+    if verbose {
+        println!("   -> Allocated Quantum Memory: {} qubits", total_qubits);
+    }
 
     let mut simulator = NativeSimulator::new(total_qubits);
 
@@ -430,12 +425,8 @@ fn compile_file(filename: &str, show_ast: bool, show_tokens: bool, verbose: bool
     let start_time = Instant::now();
 
     //Evaluator (Hybrid Mode)
-    let result = Evaluator::evaluate_program_with_lifecycle(
-        &ast,
-        &env,
-        &mut lifecycle,
-        &mut simulator,
-    );
+    let result =
+        Evaluator::evaluate_program_with_lifecycle(&ast, &env, &mut lifecycle, &mut simulator);
 
     let duration = start_time.elapsed();
 
@@ -494,7 +485,9 @@ fn print_help() {
     println!("QUANTUM HARDWARE OPTIONS:");
     println!("    --hardware <provider>    Run on quantum hardware/simulator");
     println!("                             Providers:");
-    println!("                             - native   : Native Rust simulator (default, fast, no deps)");
+    println!(
+        "                             - native   : Native Rust simulator (default, fast, no deps)"
+    );
     println!("                             - ibm      : IBM Quantum (requires Python + qiskit)");
     println!("                             - google   : Google Cirq (requires Python + cirq)");
     println!("                             - aws      : AWS Braket");
@@ -543,7 +536,9 @@ fn print_help() {
     println!("    Qiskit:  ✅ Real IBM hardware, ❌ requires Python");
     println!("    Cirq:    ✅ Google integration, ❌ requires Python");
     println!();
-    println!("For more information, visit: https://github.com/Quantica-Foundation/quantica-lang.git");
+    println!(
+        "For more information, visit: https://github.com/Quantica-Foundation/quantica-lang.git"
+    );
 }
 fn compile_file_llvm(
     filename: &str,
@@ -829,12 +824,8 @@ fn run_test_file(filename: &str) -> Result<(), String> {
     let total_qubits = count_total_qubits(&ast);
     let mut simulator = NativeSimulator::new(total_qubits);
 
-    Evaluator::evaluate_program_with_lifecycle(
-        &ast,
-        &env,
-        &mut lifecycle,
-        &mut simulator
-    ).map_err(|e| format!("Runtime Error: {}", e))?;
+    Evaluator::evaluate_program_with_lifecycle(&ast, &env, &mut lifecycle, &mut simulator)
+        .map_err(|e| format!("Runtime Error: {}", e))?;
 
     Ok(())
 }
@@ -1292,7 +1283,6 @@ fn run_repl() {
             continue;
         }
 
-
         // Lexer
         let mut lexer = Lexer::new(&source_buffer);
         let tokens = match lexer.tokenize() {
@@ -1330,7 +1320,6 @@ fn run_repl() {
                 continue;
             }
         };
-
 
         if let ASTNode::Program(statements) = ast {
             for stmt in statements {
@@ -1473,12 +1462,10 @@ fn run_on_hardware(
     Ok(())
 }
 fn parse_error_location(error_msg: &str) -> Option<parser::ast::Loc> {
-
     let start_bytes = error_msg.find("[Line ")?;
     let rest = &error_msg[start_bytes..];
     let end_bytes = rest.find(']')?;
     let content = &rest[6..end_bytes];
-
 
     let parts: Vec<&str> = content.split(", Col ").collect();
     if parts.len() == 2 {
@@ -1494,7 +1481,6 @@ fn count_total_qubits(node: &ASTNode) -> usize {
             stmts.iter().map(count_total_qubits).sum()
         }
         ASTNode::QuantumDeclaration { size, .. } => {
-
             if let Some(size_expr) = size {
                 if let ASTNode::IntLiteral(n) = &**size_expr {
                     *n as usize
@@ -1505,10 +1491,19 @@ fn count_total_qubits(node: &ASTNode) -> usize {
                 1
             }
         }
-        ASTNode::If { then_block, elif_blocks, else_block, .. } => {
+        ASTNode::If {
+            then_block,
+            elif_blocks,
+            else_block,
+            ..
+        } => {
             let mut sum = count_total_qubits(then_block);
-            for (_, block) in elif_blocks { sum += count_total_qubits(block); }
-            if let Some(blk) = else_block { sum += count_total_qubits(blk); }
+            for (_, block) in elif_blocks {
+                sum += count_total_qubits(block);
+            }
+            if let Some(blk) = else_block {
+                sum += count_total_qubits(blk);
+            }
             sum
         }
         ASTNode::For { body, .. } | ASTNode::While { body, .. } => count_total_qubits(body),

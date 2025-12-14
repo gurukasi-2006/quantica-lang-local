@@ -39,18 +39,15 @@ impl Lexer {
 
                 if self.current_char().ok() == Some('/') {
                     if self.peek() == Some('/') {
-
                         self.advance();
                         self.skip_single_line_comment();
                         continue;
                     } else if self.peek() == Some('*') {
-
                         self.advance();
                         self.advance();
                         self.skip_multiline_comment()?;
                         continue;
                     } else {
-
                         break;
                     }
                 } else {
@@ -68,7 +65,6 @@ impl Lexer {
                 continue;
             }*/
 
-
             if self.current_char().ok() == Some('\n') {
                 self.advance();
                 if self.nesting_level == 0 {
@@ -77,10 +73,8 @@ impl Lexer {
                 continue;
             }
 
-
             let _start_col = self.column;
             let ch = self.current_char()?;
-
 
             let token_result = match ch {
                 // Quantum notation
@@ -224,7 +218,9 @@ impl Lexer {
                 }
                 ')' => {
                     self.advance();
-                    if self.nesting_level > 0 { self.nesting_level -= 1; }
+                    if self.nesting_level > 0 {
+                        self.nesting_level -= 1;
+                    }
                     Ok(self.make_token(Token::RightParen, 1))
                 }
                 '[' => {
@@ -234,12 +230,16 @@ impl Lexer {
                 }
                 ']' => {
                     self.advance();
-                    if self.nesting_level > 0 { self.nesting_level -= 1; }
+                    if self.nesting_level > 0 {
+                        self.nesting_level -= 1;
+                    }
                     Ok(self.make_token(Token::RightBracket, 1))
                 }
                 '}' => {
                     self.advance();
-                    if self.nesting_level > 0 { self.nesting_level -= 1; }
+                    if self.nesting_level > 0 {
+                        self.nesting_level -= 1;
+                    }
                     Ok(self.make_token(Token::RightBrace, 1))
                 }
                 ',' => {
@@ -289,11 +289,20 @@ impl Lexer {
             };
 
             tokens.push(token_result?);
+
+            if let Some(last_tok) = tokens.last() {
+                if matches!(last_tok.token, Token::Colon) {
+                    // Peek ahead to see if there's a newline
+                    if !self.is_at_end() && self.current_char().ok() == Some('\n') {
+                        // Reset nesting level so indentation handling works
+                        self.nesting_level = 0;
+                    }
+                }
+            }
+
         }
 
-
         while self.indent_stack.len() > 1 {
-
             self.indent_stack.pop();
             tokens.push(self.make_token(Token::Dedent, 0));
         }
@@ -316,7 +325,6 @@ impl Lexer {
             let ch = self.current_char()?;
 
             if ch == '*' && self.peek() == Some('/') {
-
                 self.advance();
                 self.advance();
                 return Ok(());
@@ -329,14 +337,16 @@ impl Lexer {
     pub fn debug_print_tokens(&self, tokens: &[TokenWithLocation]) {
         println!("=== TOKEN STREAM ===");
         for (i, tok) in tokens.iter().enumerate() {
-            println!("[{}] Line {}, Col {}: {:?}", i, tok.line, tok.column, tok.token);
+            println!(
+                "[{}] Line {}, Col {}: {:?}",
+                i, tok.line, tok.column, tok.token
+            );
         }
         println!("=== END TOKENS ===");
     }
 
     fn handle_indentation(&mut self, tokens: &mut Vec<TokenWithLocation>) -> Result<(), String> {
         let mut indent_level = 0;
-
 
         while !self.is_at_end() {
             let ch = self.current_char()?;
@@ -350,13 +360,11 @@ impl Lexer {
                     self.advance();
                 }
                 '\r' => {
-
                     self.advance();
                 }
                 _ => break,
             }
         }
-
 
         if self.is_at_end() {
             self.start_of_line = false;
@@ -365,12 +373,10 @@ impl Lexer {
 
         let ch = self.current_char()?;
 
-
         if ch == '\n' {
             self.start_of_line = false;
             return Ok(());
         }
-
 
         if ch == '/' {
             if self.peek() == Some('/') || self.peek() == Some('*') {
@@ -379,18 +385,14 @@ impl Lexer {
             }
         }
 
-
         self.start_of_line = false;
-
 
         let current_indent = *self.indent_stack.last().unwrap();
 
         if indent_level > current_indent {
-
             self.indent_stack.push(indent_level);
             tokens.push(self.make_token(Token::Indent, 0));
         } else if indent_level < current_indent {
-
             while let Some(&stack_level) = self.indent_stack.last() {
                 if stack_level <= indent_level {
                     break;
@@ -398,7 +400,6 @@ impl Lexer {
                 self.indent_stack.pop();
                 tokens.push(self.make_token(Token::Dedent, 0));
             }
-
 
             if self.indent_stack.last() != Some(&indent_level) {
                 return Err(format!(
@@ -408,7 +409,6 @@ impl Lexer {
             }
         }
 
-
         Ok(())
     }
 
@@ -417,26 +417,18 @@ impl Lexer {
         let start_col = self.column;
 
         let token = match ch {
-
             '#' => {
                 self.skip_comment();
                 return Ok(None);
             }
 
-
-
-
-
             '\n' => {
                 let token = Token::Newline;
 
-
                 self.advance();
-
 
                 let length = 1;
                 let token_with_loc = self.make_token(token, length);
-
 
                 self.line += 1;
                 self.column = 1;
@@ -478,7 +470,6 @@ impl Lexer {
                 Token::Plus
             }
             '-' => {
-
                 if self.peek() == Some('>') {
                     self.advance();
                     self.advance();
@@ -489,21 +480,18 @@ impl Lexer {
                 }
             }
             '*' => {
-
                 if self.peek() == Some('*') && self.input.get(self.position + 2) == Some(&'*') {
                     self.advance();
                     self.advance();
                     self.advance();
                     Token::TensorProduct
                 }
-
                 /* else if self.peek() == Some('*') {
                     self.advance();
                     self.advance();
                     Token::Power
                 } */
                 else {
-
                     self.advance();
                     Token::Star
                 }
@@ -517,13 +505,11 @@ impl Lexer {
                 Token::Percent
             }
             '=' => {
-
                 if self.peek() == Some('=') {
                     self.advance();
                     self.advance();
                     Token::EqualEqual
                 } else if self.peek() == Some('>') {
-
                     if self.input.get(self.position + 2) == Some(&'>') {
                         self.advance();
                         self.advance();
@@ -540,7 +526,6 @@ impl Lexer {
                 }
             }
             '!' => {
-
                 if self.peek() == Some('=') {
                     self.advance();
                     self.advance();
@@ -551,7 +536,6 @@ impl Lexer {
                 }
             }
             '<' => {
-
                 if self.peek() == Some('=') {
                     self.advance();
                     self.advance();
@@ -562,7 +546,6 @@ impl Lexer {
                 }
             }
             '>' => {
-
                 if self.peek() == Some('=') {
                     self.advance();
                     self.advance();
@@ -573,7 +556,6 @@ impl Lexer {
                 }
             }
             '?' => {
-
                 if self.peek() == Some('.') {
                     self.advance();
                     self.advance();
@@ -624,7 +606,6 @@ impl Lexer {
                 Token::Semicolon
             }
             ':' => {
-
                 if self.peek() == Some(':') {
                     self.advance();
                     self.advance();
@@ -639,22 +620,18 @@ impl Lexer {
                 }
             }
             '.' => {
-
                 if self.peek() == Some('.') {
-
                     if self.input.get(self.position + 2) == Some(&'=') {
                         self.advance();
                         self.advance();
                         self.advance();
                         Token::RangeInclusive
                     } else {
-
                         self.advance();
                         self.advance();
                         Token::Range
                     }
                 } else {
-
                     self.advance();
                     Token::Dot
                 }
@@ -681,7 +658,6 @@ impl Lexer {
     }
 
     fn is_quantum_bra(&self) -> bool {
-
         let mut i = self.position + 1;
         while i < self.input.len() {
             let ch = self.input[i];
@@ -903,11 +879,9 @@ impl Lexer {
         let start_col = self.column;
         let mut is_float = false;
 
-
         while !self.is_at_end() && self.current_char()?.is_ascii_digit() {
             self.advance();
         }
-
 
         if !self.is_at_end() && self.current_char()? == '.' {
             let next = self.peek();
@@ -920,7 +894,6 @@ impl Lexer {
                 }
             }
         }
-
 
         if !self.is_at_end() && (self.current_char()? == 'e' || self.current_char()? == 'E') {
             is_float = true;
@@ -1014,7 +987,6 @@ impl Lexer {
         Ok(self.make_token(Token::IntLiteral(ch as i64), length))
     }
 
-
     fn current_char(&self) -> Result<char, String> {
         if self.is_at_end() {
             Err("Unexpected end of input".to_string())
@@ -1042,7 +1014,6 @@ impl Lexer {
     fn skip_single_line_comment(&mut self) {
         self.advance();
 
-
         while let Ok(ch) = self.current_char() {
             if ch == '\n' {
                 break;
@@ -1062,7 +1033,6 @@ impl Lexer {
                 self.start_of_line = true;
             } else {
                 self.column += 1;
-
             }
         }
     }
@@ -1071,12 +1041,8 @@ impl Lexer {
         self.position >= self.input.len()
     }
 
-
-
     fn make_token(&self, token: Token, length: usize) -> TokenWithLocation {
-
         let calculated_start_column = self.column.saturating_sub(length);
-
 
         let start_column = if calculated_start_column == 0 {
             1
@@ -1255,7 +1221,6 @@ mod tests {
         let input = "let x = 10 // this is a comment\nlet y = 20";
         let mut lexer = Lexer::new(input);
         let tokens = lexer.tokenize().unwrap();
-
 
         assert!(tokens.iter().any(|t| matches!(t.token, Token::Let)));
         assert!(tokens
