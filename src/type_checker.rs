@@ -736,7 +736,7 @@ impl TypeChecker {
     }
 
     fn check_module(path: &ImportPath) -> Result<HashMap<String, Type>, String> {
-        let file_path = match path {
+        let raw_path = match path {
             ImportPath::File(f) => {
                 if f.ends_with(".qc") || f.contains('/') || f.contains('\\') {
                     f.clone()
@@ -747,10 +747,22 @@ impl TypeChecker {
             ImportPath::Module(m) => m.join("/") + ".qc",
         };
 
-        let source = fs::read_to_string(&file_path).map_err(|e| {
+        let mut final_path = std::path::PathBuf::from(&raw_path);
+
+        if !final_path.exists() {
+            if let Ok(mut exe_path) = std::env::current_exe() {
+                exe_path.pop();
+                let install_path = exe_path.join(&raw_path);
+                if install_path.exists() {
+                    final_path = install_path;
+                }
+            }
+        }
+
+        let source = fs::read_to_string(&final_path).map_err(|e| {
             format!(
                 "Type Check Error: Failed to read module '{}': {}",
-                file_path, e
+                raw_path, e
             )
         })?;
 
