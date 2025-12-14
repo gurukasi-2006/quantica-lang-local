@@ -224,6 +224,8 @@ Class Layer:
             delta = delta + [d]
             i = i + 1
 
+
+        /*
         i = 0
         while i < output_size:
             mut j = 0
@@ -235,17 +237,16 @@ Class Layer:
             // Update bias
             biases[i] = biases[i] - learning_rate * delta[i]
             i = i + 1
+        */
 
-        mut input_gradient = []
-        mut j = 0
-        while j < input_size:
-            mut sum = 0.0
-            i = 0
-            while i < output_size:
-                sum = sum + weights[i][j] * delta[i]
-                i = i + 1
-            input_gradient = input_gradient + [sum]
-            j = j + 1
+        matrix_update(weights, delta, last_input, learning_rate)
+
+        i = 0
+        while i < output_size:
+            biases[i] = biases[i] - learning_rate * delta[i]
+            i = i + 1
+
+        let input_gradient = compute_input_gradient(weights, delta)
 
         return input_gradient
 

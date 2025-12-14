@@ -1,4 +1,5 @@
 /* src/type_checker.rs */
+
 use crate::error::{find_similar_names, levenshtein_distance};
 use crate::lexer::Lexer;
 use crate::parser::ast::ImportPath;
@@ -357,6 +358,30 @@ impl TypeChecker {
             immut(Type::Function(
                 vec![],                 // No arguments
                 Box::new(Type::Float),  // Returns Float
+            )),
+        );
+
+        env_mut.set(
+            "matrix_update".to_string(),
+            immut(Type::Function(
+                vec![
+                    Type::Array(Box::new(Type::Array(Box::new(Type::Float)))), // weights
+                    Type::Array(Box::new(Type::Float)), // delta
+                    Type::Array(Box::new(Type::Float)), // input
+                    Type::Float                         // lr
+                ],
+                Box::new(Type::None),
+            )),
+        );
+
+        env_mut.set(
+            "compute_input_gradient".to_string(),
+            immut(Type::Function(
+                vec![
+                    Type::Array(Box::new(Type::Array(Box::new(Type::Float)))), // weights
+                    Type::Array(Box::new(Type::Float))  // delta
+                ],
+                Box::new(Type::Array(Box::new(Type::Float))), // returns input_gradient
             )),
         );
 

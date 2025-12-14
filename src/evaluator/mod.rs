@@ -169,6 +169,8 @@ impl Evaluator {
         let mut e = env.borrow_mut();
 
         e.set("time".to_string(), RuntimeValue::BuiltinFunction("time".to_string()));
+        e.set("matrix_update".to_string(), RuntimeValue::BuiltinFunction("matrix_update".to_string()));
+        e.set("compute_input_gradient".to_string(), RuntimeValue::BuiltinFunction("compute_input_gradient".to_string()));
 
         e.set(
             "print".to_string(),
@@ -1649,6 +1651,8 @@ impl Evaluator {
 
                 match func_name.as_str() {
                     "print" => Self::builtin_print(evaluated_args),
+                    "matrix_update" => Self::builtin_matrix_update(evaluated_args),
+                    "compute_input_gradient" => Self::builtin_compute_input_gradient(evaluated_args),
                     "time" => Self::builtin_time(evaluated_args),
                     "input" => Self::builtin_input(evaluated_args),
                     "split" => Self::builtin_split(evaluated_args),
@@ -1985,6 +1989,65 @@ impl Evaluator {
         println!("-----------------------------------");
     }
 
+    fn builtin_compute_input_gradient(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
+        if args.len() != 2 {
+            return Err("Runtime Error: 'compute_input_gradient' requires 2 args (weights, delta)".to_string());
+        }
+
+        let weights_matrix = match &args[0] {
+            RuntimeValue::Register(v) => v,
+            _ => return Err("Runtime Error: Weights must be a matrix".to_string())
+        };
+
+        let delta_vec = match &args[1] {
+            RuntimeValue::Register(v) => v,
+            _ => return Err("Runtime Error: Delta must be an array".to_string())
+        };
+
+        let output_size = delta_vec.len();
+        if output_size == 0 { return Ok(RuntimeValue::Register(vec![])); }
+
+        if weights_matrix.is_empty() { return Ok(RuntimeValue::Register(vec![])); }
+        let input_size = match &*weights_matrix[0].borrow() {
+            RuntimeValue::Register(row) => row.len(),
+            _ => 0
+        };
+
+        let mut input_gradient = vec![0.0; input_size];
+
+        //result[j] = sum(weights[i][j] * delta[i])
+        for (i, row_rc) in weights_matrix.iter().enumerate() {
+            if i >= output_size { break; }
+
+            // delta[i]
+            let d_val = match *delta_vec[i].borrow() {
+                RuntimeValue::Float(f) => f,
+                _ => 0.0
+            };
+
+            let row_val = row_rc.borrow();
+            if let RuntimeValue::Register(row) = &*row_val {
+                for (j, weight_rc) in row.iter().enumerate() {
+                    if j >= input_size { break; }
+
+                    let w_val = match *weight_rc.borrow() {
+                        RuntimeValue::Float(f) => f,
+                        _ => 0.0
+                    };
+
+                    input_gradient[j] += w_val * d_val;
+                }
+            }
+        }
+
+        let result_objs: Vec<Rc<RefCell<RuntimeValue>>> = input_gradient
+            .into_iter()
+            .map(|f| Rc::new(RefCell::new(RuntimeValue::Float(f))))
+            .collect();
+
+        Ok(RuntimeValue::Register(result_objs))
+    }
+
     fn builtin_time(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
         if !args.is_empty() {
             return Err("Runtime Error: 'time' expects 0 arguments.".to_string());
@@ -1994,6 +2057,63 @@ impl Evaluator {
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|e| format!("Time Error: {}", e))?;
         Ok(RuntimeValue::Float(since_the_epoch.as_secs_f64()))
+    }
+
+    fn builtin_matrix_update(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
+        if args.len() != 4 {
+            return Err("Runtime Error: 'matrix_update' requires 4 args (weights, delta, input, lr)".to_string());
+        }
+
+        let lr = match args[3] {
+            RuntimeValue::Float(f) => f,
+            _ => return Err("Runtime Error: Learning rate must be a float".to_string())
+        };
+
+        let delta_vec = match &args[1] {
+            RuntimeValue::Register(v) => v,
+            _ => return Err("Runtime Error: Delta must be an array".to_string())
+        };
+        let input_vec = match &args[2] {
+            RuntimeValue::Register(v) => v,
+            _ => return Err("Runtime Error: Input must be an array".to_string())
+        };
+
+        let weights_matrix = match &args[0] {
+            RuntimeValue::Register(v) => v,
+            _ => return Err("Runtime Error: Weights must be a matrix".to_string())
+        };
+
+        // weights[i][j] -= lr * delta[i] * input[j]
+        for (i, row_rc) in weights_matrix.iter().enumerate() {
+            if i >= delta_vec.len() { break; }
+
+            // Get delta[i]
+            let d_val = match *delta_vec[i].borrow() {
+                RuntimeValue::Float(f) => f,
+                _ => 0.0
+            };
+
+            let row_val = row_rc.borrow();
+            if let RuntimeValue::Register(row) = &*row_val {
+                for (j, weight_rc) in row.iter().enumerate() {
+                    if j >= input_vec.len() { break; }
+
+                    // Get input[j]
+                    let in_val = match *input_vec[j].borrow() {
+                        RuntimeValue::Float(f) => f,
+                        _ => 0.0
+                    };
+
+                    // Update Weight
+                    let mut w_guard = weight_rc.borrow_mut();
+                    if let RuntimeValue::Float(w) = *w_guard {
+                        *w_guard = RuntimeValue::Float(w - (lr * d_val * in_val));
+                    }
+                }
+            }
+        }
+
+        Ok(RuntimeValue::None)
     }
 
     fn builtin_debug_state(args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
