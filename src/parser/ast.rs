@@ -1,7 +1,7 @@
 // src/parser/ast.rs
-use std::fmt;
 use std::collections::HashMap;
-#[derive(Debug, Clone, PartialEq,Copy)]
+use std::fmt;
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub struct Loc {
     pub line: usize,
     pub column: usize,
@@ -22,18 +22,16 @@ pub enum ImportPath {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ImportSpec {
     List(Vec<String>), // For 'import name1, name2'
-    All,              // For 'import *'
+    All,               // For 'import *'
 }
-
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ASTNode {
     // Program root
     Program(Vec<ASTNode>),
-    
+
     // Statements
     LetDeclaration {
-        
         name: String,
         type_annotation: Option<Type>,
         value: Box<ASTNode>,
@@ -42,7 +40,7 @@ pub enum ASTNode {
 
     Import {
         path: ImportPath, // e.g., "./my_math.qc"
-        alias: String, // e.g., "math"
+        alias: String,    // e.g., "math"
     },
 
     FromImport {
@@ -55,28 +53,26 @@ pub enum ASTNode {
         error_variable: Option<String>, // For 'catch err:'
         catch_block: Box<ASTNode>,
     },
-    
+
     QuantumDeclaration {
         name: String,
         size: Option<Box<ASTNode>>, // For arrays like quantum q[5]
         initial_state: Option<Box<ASTNode>>,
     },
     FunctionDeclaration {
-        
         name: String,
         parameters: Vec<Parameter>,
         return_type: Option<Type>,
         body: Box<ASTNode>,
     },
     CircuitDeclaration {
-        
         name: String,
         parameters: Vec<Parameter>,
         return_type: Option<Type>,
         body: Box<ASTNode>,
     },
     Return(Option<Box<ASTNode>>),
-    
+
     // Control flow
     If {
         condition: Box<ASTNode>,
@@ -99,13 +95,13 @@ pub enum ASTNode {
     },
     Break,
     Continue,
-    
+
     // Expressions
     Binary {
         operator: BinaryOperator,
         left: Box<ASTNode>,
         right: Box<ASTNode>,
-        loc: Loc
+        loc: Loc,
     },
     Unary {
         operator: UnaryOperator,
@@ -125,7 +121,6 @@ pub enum ASTNode {
     Gate {
         name: String,
         loc: Loc,
-        
     },
 
     ParameterizedGate {
@@ -142,16 +137,16 @@ pub enum ASTNode {
         loc: Loc,
     },
     Measure(Box<ASTNode>),
-    
+
     // Literals
     IntLiteral(i64),
     FloatLiteral(f64),
     StringLiteral(String),
     BoolLiteral(bool),
     NoneLiteral,
-    QuantumKet(String),  // |0}, |1}, |+}, etc.
-    QuantumBra(String),  // {0|, {1|, etc.
-    
+    QuantumKet(String), // |0}, |1}, |+}, etc.
+    QuantumBra(String), // {0|, {1|, etc.
+
     // Variables and access
     Identifier {
         name: String,
@@ -162,11 +157,34 @@ pub enum ASTNode {
         index: Box<ASTNode>,
         loc: Loc,
     },
+    ClassDeclaration {
+        name: String,
+        superclass: Option<String>,
+        fields: Vec<ClassField>,
+        methods: Vec<ClassMethod>,
+        constructor: Option<Box<ASTNode>>,
+        loc: Loc,
+    },
+
+    // Object Creation
+    NewInstance {
+        class_name: String,
+        arguments: Vec<ASTNode>,
+        loc: Loc,
+    },
+    MethodCall {
+        object: Box<ASTNode>,
+        method_name: String,
+        arguments: Vec<ASTNode>,
+        loc: Loc,
+    },
     MemberAccess {
         object: Box<ASTNode>,
         member: String,
     },
-    
+
+    SelfRef { loc: Loc },
+
     // Collections
     ArrayLiteral(Vec<ASTNode>),
     DictLiteral(Vec<(ASTNode, ASTNode)>),
@@ -175,10 +193,10 @@ pub enum ASTNode {
         end: Box<ASTNode>,
         inclusive: bool,
     },
-    
+
     // Block
     Block(Vec<ASTNode>),
-    
+
     // Assignment
     Assignment {
         target: Box<ASTNode>,
@@ -188,12 +206,22 @@ pub enum ASTNode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOperator {
-    Add, Sub, Mul, Div, Mod,
-    Equal, NotEqual, Less, Greater, LessEqual, GreaterEqual,
-    And, Or,
-    TensorProduct,  // ***
-    Pipeline, 
-    Power,      
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Equal,
+    NotEqual,
+    Less,
+    Greater,
+    LessEqual,
+    GreaterEqual,
+    And,
+    Or,
+    TensorProduct, // ***
+    Pipeline,
+    Power,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -211,10 +239,24 @@ pub struct Parameter {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
-    Int, Int8, Int16, Int32, Int64, Int128,
-    Uint, Uint8, Uint16, Uint32, Uint64, Uint128,
-    Float, Float32, Float64,
-    Complex, Complex64, Complex128,
+    Int,
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    Int128,
+    Uint,
+    Uint8,
+    Uint16,
+    Uint32,
+    Uint64,
+    Uint128,
+    Float,
+    Float32,
+    Float64,
+    Complex,
+    Complex64,
+    Complex128,
     Bool,
     Bit,
     String,
@@ -228,6 +270,8 @@ pub enum Type {
     Function(Vec<Type>, Box<Type>),
     Custom(String),
     Any,
+    Class(String),  // For class types
+    Instance(String),
     None,
 }
 
@@ -236,5 +280,22 @@ pub enum Pattern {
     Literal(ASTNode),
     Identifier(String),
     Wildcard,
+}
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClassField {
+    pub name: String,
+    pub field_type: Type,
+    pub default_value: Option<Box<ASTNode>>,
+    pub is_public: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClassMethod {
+    pub name: String,
+    pub parameters: Vec<Parameter>,
+    pub return_type: Option<Type>,
+    pub body: Box<ASTNode>,
+    pub is_public: bool,
+    pub is_static: bool,
 }
