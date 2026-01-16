@@ -722,6 +722,9 @@ fn run_jit_file(
     use std::io::Write;
     let _ = std::io::stdout().flush();
 
+    println!("[DEBUG] About to execute JIT code...");
+    let _ = std::io::stdout().flush();
+
     let start_time = Instant::now();
     compiler.run_jit()?;
     let duration = start_time.elapsed();
